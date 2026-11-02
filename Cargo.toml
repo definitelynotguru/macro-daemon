@@ -1,0 +1,28 @@
+[package]
+name = "macro_daemon"
+version = "0.1.0"
+edition = "2021"
+description = "Vendor-neutral macro daemon: replays recovered macro semantics via Linux evdev/uinput"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "macro_daemon"
+path = "src/lib.rs"
+
+[[bin]]
+name = "macro-daemon"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+evdev = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+signal-hook = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uinput = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

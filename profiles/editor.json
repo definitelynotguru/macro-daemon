@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "profile": {
+    "name": "editor",
+    "apps": ["/usr/bin/code", "code"]
+  },
+  "macros": [
+    {
+      "id": "m-save-all",
+      "name": "save-all",
+      "events": [
+        { "type": 2, "page": 1, "code": 224, "extraData": 1, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 225, "extraData": 1, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 22, "extraData": 1, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 22, "extraData": 0, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 225, "extraData": 0, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 224, "extraData": 0, "timestamp": 0 }
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "type": "customAction",
+      "id": "b-save-all",
+      "macro_id": "m-save-all",
+      "trigger_data": { "hidCode": 67, "page": 1, "type": 2, "direction": 1 },
+      "playback_options_data": { "type": 3, "num_repeat": 1, "repeat_delay": 250 }
+    }
+  ]
+}

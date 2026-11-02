@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "profile": {
+    "name": "default",
+    "apps": []
+  },
+  "macros": [
+    {
+      "id": "m-paste",
+      "name": "paste-workflow",
+      "events": [
+        { "type": 2, "page": 1, "code": 224, "extraData": 1, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 25, "extraData": 1, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 25, "extraData": 0, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 224, "extraData": 0, "timestamp": 0 }
+      ]
+    },
+    {
+      "id": "m-f5x2",
+      "name": "double-tap-f5",
+      "events": [
+        { "type": 2, "page": 1, "code": 62, "extraData": 1, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 62, "extraData": 0, "timestamp": 0 },
+        { "type": 4, "page": 0, "code": 0, "extraData": 120, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 62, "extraData": 1, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 62, "extraData": 0, "timestamp": 0 }
+      ]
+    },
+    {
+      "id": "m-scroll",
+      "name": "wheel-burst",
+      "events": [
+        { "type": 1, "page": 0, "code": 0, "extraData": 1, "timestamp": 0 },
+        { "type": 1, "page": 0, "code": 0, "extraData": 255, "timestamp": 0 }
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "type": "customAction",
+      "id": "b-paste",
+      "macro_id": "m-paste",
+      "trigger_data": { "hidCode": 71, "page": 1, "type": 2, "direction": 1 },
+      "playback_options_data": { "type": 0, "num_repeat": 1, "repeat_delay": 15 }
+    },
+    {
+      "type": "customAction",
+      "id": "b-f5x2",
+      "macro_id": "m-f5x2",
+      "trigger_data": { "hidCode": 69, "page": 1, "type": 2, "direction": 1 },
+      "playback_options_data": { "type": 1, "num_repeat": 2, "repeat_delay": 100 }
+    },
+    {
+      "type": "customAction",
+      "id": "b-scroll",
+      "macro_id": "m-scroll",
+      "trigger_data": { "hidCode": 62, "page": 1, "type": 2, "direction": 1 },
+      "playback_options_data": { "type": 2, "num_repeat": 1, "repeat_delay": 20 }
+    }
+  ]
+}

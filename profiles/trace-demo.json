@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "profile": {
+    "name": "trace-demo",
+    "apps": []
+  },
+  "macros": [
+    {
+      "id": "m-repeat-demo",
+      "name": "two-event-repeat",
+      "events": [
+        { "type": 2, "page": 1, "code": 4, "extraData": 1, "timestamp": 0 },
+        { "type": 2, "page": 1, "code": 4, "extraData": 0, "timestamp": 0 }
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "type": "customAction",
+      "id": "b-repeat-demo",
+      "macro_id": "m-repeat-demo",
+      "trigger_data": { "hidCode": 66, "page": 1, "type": 2, "direction": 1 },
+      "playback_options_data": { "type": 1, "num_repeat": 3, "repeat_delay": 50 }
+    }
+  ]
+}

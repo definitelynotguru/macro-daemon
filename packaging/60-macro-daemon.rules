@@ -1,0 +1,11 @@
+# udev rules for macro-daemon
+#
+# Install as /etc/udev/rules.d/60-macro-daemon.rules, then:
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# 1) uinput: the daemon needs to create a virtual keyboard/mouse.
+KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"
+
+# 2) evdev nodes: reading triggers. Most distributions already ship this as
+#    50-udev-default.rules; repeating it is harmless and fixes slim images.
+SUBSYSTEM=="input", KERNEL=="event*", MODE="0660", GROUP="input"
