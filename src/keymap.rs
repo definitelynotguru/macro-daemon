@@ -133,6 +133,15 @@ impl Keymap {
         self.by_name.get(name).copied()
     }
 
+    /// Hotkey name → HID `(page, usage)`.
+    ///
+    /// Hotkeys are matched against [`crate::trigger::InputSample`], which carries HID usages,
+    /// not evdev codes (MACRO_SPEC.md §A.2). Resolving here keeps both sides in one space.
+    pub fn hotkey_hid(&self, name: &str) -> Option<(u8, u16)> {
+        let evdev = self.by_name(name)?;
+        self.reverse(evdev)
+    }
+
     /// Resolve a key event to the evdev code to inject.
     ///
     /// Page 1 and 12 go through the table; page 0 pseudo-codes are mouse buttons

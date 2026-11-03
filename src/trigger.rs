@@ -3,7 +3,7 @@
 //! Triggers are described the same way the recovered engine describes them
 //! (`trigger_data: {hidCode, page, type, direction}`, MACRO_SPEC.md §D.2), so this module only
 //! has to translate an evdev event into that coordinate space once.
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::thread;
 
@@ -57,6 +57,14 @@ impl InputSample {
             return t.direction == self.direction;
         }
         true
+    }
+
+    /// Does this press match the daemon's toggle hotkey, expressed in HID space?
+    pub fn is_hotkey(&self, page: u8, hid_code: u16) -> bool {
+        self.pressed
+            && self.trigger_type == TRIGGER_KEYBOARD
+            && self.page == page
+            && self.hid_code == hid_code
     }
 }
 
@@ -161,6 +169,8 @@ pub fn spawn_reader(path: PathBuf, grab: bool, km: Keymap, tx: Sender<InputSampl
 ///
 /// `exclude_name` drops the daemon's own virtual device: it declares every keycode, so without
 /// this filter a macro that emits a bound key would feed its own output back in as a trigger.
+/// Synthetic devices from other tools (`ydotoold`, `wtype`) are skipped for the same reason.
+/// An explicit `-d` path bypasses both checks, because naming a node is a deliberate choice.
 pub fn discover_devices(exclude_name: Option<&str>) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let Ok(entries) = std::fs::read_dir("/dev/input") else {
@@ -176,8 +186,9 @@ pub fn discover_devices(exclude_name: Option<&str>) -> Vec<PathBuf> {
         }
         // Only keep nodes we can actually read; opening is the honest test.
         if let Ok(dev) = Device::open(&path) {
-            if exclude_name == dev.name() {
-                continue; // our own virtual device
+            let dev_name = dev.name().unwrap_or("<unnamed>");
+            if Some(dev_name) == exclude_name || is_virtual_device_name(dev_name) {
+                continue;
             }
             let supported = dev.supported_keys();
             let has_keys = supported.map(|k| k.iter().count() > 20).unwrap_or(false);
@@ -190,6 +201,15 @@ pub fn discover_devices(exclude_name: Option<&str>) -> Vec<PathBuf> {
     out
 }
 
+/// Names that mark a node as synthetic rather than hardware.
+///
+/// A virtual keyboard emits whatever it is told to, so reading it as a trigger source lets one
+/// macro fire another. Matched case-insensitively on the device name.
+pub fn is_virtual_device_name(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.contains("virtual") || n.contains("uinput") || n.contains("ydotool") || n.contains("wtype")
+}
+
 pub fn open_device_names(paths: &[PathBuf]) -> Vec<(PathBuf, String)> {
     paths
         .iter()
@@ -199,12 +219,4 @@ pub fn open_device_names(paths: &[PathBuf]) -> Vec<(PathBuf, String)> {
                 .map(|d| (p.clone(), d.name().unwrap_or("<unnamed>").to_string()))
         })
         .collect()
-}
-
-/// Best-effort check that a path looks like an evdev node.
-pub fn looks_like_event_node(p: &Path) -> bool {
-    p.file_name()
-        .and_then(|n| n.to_str())
-        .map(|n| n.starts_with("event"))
-        .unwrap_or(false)
 }

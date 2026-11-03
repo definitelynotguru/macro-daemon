@@ -25,7 +25,7 @@ pub use config::{
     ProfileFile, ProfileSet, RecordingOptions, TransparentMacroData, TriggerData,
 };
 pub use engine::{plan_offsets, RunStats, Runner};
-pub use inject::{Injector, MockInjector, UinputInjector, WheelAxis};
+pub use inject::{Injector, LockedInjector, MockInjector, UinputInjector, WheelAxis};
 pub use keymap::Keymap;
 
 /// `MACRO_SPEC.md` sections this crate implements, for the README compatibility table.

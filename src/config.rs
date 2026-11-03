@@ -162,16 +162,6 @@ impl PlaybackType {
         self as u8
     }
 
-    /// `true` when the mode needs the trigger release/re-press signal to stop looping.
-    pub fn is_held_mode(self) -> bool {
-        matches!(
-            self,
-            PlaybackType::RepeatWhilePressed
-                | PlaybackType::ToggleHold
-                | PlaybackType::HoldWhilePressed
-        )
-    }
-
     /// `true` when `repeat_delay` is honoured (MACRO_SPEC.md §B.4 table).
     pub fn uses_repeat_delay(self) -> bool {
         matches!(
@@ -370,6 +360,17 @@ fn de_opt_transparent<'de, D: Deserializer<'de>>(
     }
 }
 
+/// Key for a binding's in-flight gate.
+///
+/// Prefers the binding id so a release still finds its gate after a profile switch. Index and
+/// HID usage are the fallback for configs written without ids.
+pub fn gate_key(id: Option<&str>, index: usize, hid_code: u16) -> String {
+    match id {
+        Some(id) => id.to_string(),
+        None => format!("idx{index}:{hid_code}"),
+    }
+}
+
 /// `bindings` row (MACRO_SPEC.md §D.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Binding {
@@ -564,8 +565,10 @@ impl ProfileFile {
         Ok(())
     }
 
+    /// Look up a macro that can actually run. Deleted rows stay in the table as tombstones
+    /// (`macros.is_deleted`, MACRO_SPEC.md §A.1), so they must not resolve.
     pub fn macro_by_id(&self, id: &str) -> Option<&Macro> {
-        self.macros.iter().find(|m| m.id == id)
+        self.macros.iter().find(|m| m.id == id && m.is_deleted == 0)
     }
 }
 
@@ -706,6 +709,14 @@ impl ProfileSet {
 
     pub fn active_profile(&self) -> Option<&ProfileFile> {
         self.profiles.get(&self.active)
+    }
+
+    /// True when a binding promises the physical key still reaches the application while the
+    /// macro plays (`bindings.is_passthrough`, MACRO_SPEC.md §D.1).
+    pub fn has_passthrough(&self) -> bool {
+        self.profiles
+            .values()
+            .any(|p| p.bindings.iter().any(|b| b.is_passthrough))
     }
 }
 

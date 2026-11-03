@@ -16,7 +16,7 @@ use macro_daemon::config::{
     TriggerData,
 };
 use macro_daemon::engine::{plan_offsets, Runner};
-use macro_daemon::inject::{Injector, MockInjector, UinputInjector};
+use macro_daemon::inject::{Injector, LockedInjector, MockInjector, UinputInjector};
 use macro_daemon::keymap::Keymap;
 use macro_daemon::trigger::{self, InputSample};
 
@@ -312,6 +312,14 @@ fn daemon(cfg: DaemonConfig, mut profiles: ProfileSet, dry_run: bool) -> Result<
     let keymap = Arc::new(Keymap::load_embedded()?);
     tracing::info!(keys = keymap.len(), "keymap loaded");
 
+    if cfg.grab && profiles.has_passthrough() {
+        bail!(
+            "config sets `grab: true`, but some bindings are marked is_passthrough. Grabbing \
+             removes the device from the session, so those keys cannot reach the application. \
+             Set `grab: false`, or clear is_passthrough on those bindings."
+        );
+    }
+
     let injector: SharedInjector = if dry_run {
         tracing::warn!("dry-run: no events will be injected");
         Arc::new(Mutex::new(
@@ -326,13 +334,17 @@ fn daemon(cfg: DaemonConfig, mut profiles: ProfileSet, dry_run: bool) -> Result<
     let mut devices = cfg.devices.clone();
     if devices.is_empty() {
         devices = trigger::discover_devices(Some(VIRTUAL_DEVICE_NAME));
-        if devices.is_empty() {
+        if devices.is_empty() && !dry_run {
             bail!(
                 "no trigger devices. List candidates with --list-devices, then pass \
                  -d /dev/input/eventN (needs membership in the `input` group)"
             );
         }
-        tracing::info!(count = devices.len(), "auto-discovered trigger devices");
+        if devices.is_empty() {
+            tracing::warn!("dry-run with no trigger devices; nothing can fire");
+        } else {
+            tracing::info!(count = devices.len(), "auto-discovered trigger devices");
+        }
     }
     for d in &devices {
         if !d.exists() {
@@ -401,6 +413,9 @@ fn daemon(cfg: DaemonConfig, mut profiles: ProfileSet, dry_run: bool) -> Result<
                         fresh.select_for(current_app.as_deref(), &default_profile)
                     };
                     profiles = fresh;
+                    for (_, flag) in held.lock().unwrap().drain() {
+                        flag.store(false, Ordering::SeqCst);
+                    }
                     tracing::info!(profile = %profiles.active, "profiles reloaded (SIGHUP)");
                 }
                 Err(e) => tracing::error!(error = %e, "reload failed; keeping previous profiles"),
@@ -421,6 +436,11 @@ fn daemon(cfg: DaemonConfig, mut profiles: ProfileSet, dry_run: bool) -> Result<
                     "profile switch"
                 );
                 profiles.active = next;
+                // Bindings from the profile we left are gone; close their loops now or they
+                // keep running until the iteration cap.
+                for (_, flag) in held.lock().unwrap().drain() {
+                    flag.store(false, Ordering::SeqCst);
+                }
             }
         }
 
@@ -430,11 +450,8 @@ fn daemon(cfg: DaemonConfig, mut profiles: ProfileSet, dry_run: bool) -> Result<
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         };
 
-        if let Some(hk) = hotkey {
-            if sample.trigger_type == trigger::TRIGGER_KEYBOARD
-                && i32::from(sample.hid_code) == hk
-                && sample.pressed
-            {
+        if let Some((page, hid)) = hotkey {
+            if sample.is_hotkey(page, hid) {
                 let was = enabled.fetch_xor(true, Ordering::SeqCst);
                 tracing::warn!(enabled = !was, "daemon toggled by hotkey");
                 continue;
@@ -453,9 +470,11 @@ fn daemon(cfg: DaemonConfig, mut profiles: ProfileSet, dry_run: bool) -> Result<
             if !sample.matches(&binding.trigger_data) {
                 continue;
             }
-            let key = format!(
-                "{}:{}:{}",
-                profile.profile.name, idx, binding.trigger_data.hid_code
+            // Stable across profile switches, so a release can still find the gate it opened.
+            let key = macro_daemon::config::gate_key(
+                binding.id.as_deref(),
+                idx,
+                binding.trigger_data.hid_code,
             );
 
             if !sample.pressed {
@@ -628,9 +647,11 @@ fn fire(
     let spawn = thread::Builder::new()
         .name(format!("macro:{}", label))
         .spawn(move || {
-            let mut guard = injector.lock().unwrap_or_else(|e| e.into_inner());
+            // Lock per emission, not per run: a looping macro sleeps between events and must
+            // not hold the device for its whole lifetime.
+            let mut injection = LockedInjector::new(&injector);
             let mut wait = macro_daemon::clock::RealWait;
-            let mut runner = Runner::new(&mut **guard, &keymap, &mut wait).with_jitter(jitter);
+            let mut runner = Runner::new(&mut injection, &keymap, &mut wait).with_jitter(jitter);
 
             let mut gate = move |_iteration: u32| -> bool {
                 match &gate_flag {
@@ -661,13 +682,16 @@ fn fire(
     }
 }
 
-fn resolve_hotkey(spec: &str, keymap: &Keymap) -> Result<i32> {
-    if let Ok(code) = spec.parse::<i32>() {
-        return Ok(code);
+fn resolve_hotkey(spec: &str, keymap: &Keymap) -> Result<(u8, u16)> {
+    if let Some((page, hid)) = keymap.hotkey_hid(spec) {
+        return Ok((page, hid));
     }
-    keymap
-        .by_name(spec)
-        .with_context(|| format!("unknown hotkey `{spec}` (use a KEY_* name from keymap.json)"))
+    if let Ok(evdev) = spec.parse::<i32>() {
+        if let Some((page, hid)) = keymap.reverse(evdev) {
+            return Ok((page, hid));
+        }
+    }
+    bail!("unknown hotkey `{spec}` (use a KEY_* name from keymap.json, or an evdev code)")
 }
 
 fn spawn_signal_thread(stop: Arc<AtomicBool>, reload: Arc<AtomicBool>) -> Result<()> {

@@ -6,8 +6,6 @@
 //!   * repeat semantics           §B.4 table + §A.4 dual numbering
 //!   * no jitter by default       §A.3/A.4 (the format has no jitter field)
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -51,6 +49,17 @@ pub fn plan_offsets(events: &[MacroEvent]) -> Vec<u64> {
         }
     }
     out
+}
+
+/// True when a macro carries both absolute timestamps and explicit delay events.
+///
+/// Timestamp mode treats `type:4` delays as redundant, so a macro that mixes both loses the
+/// delay rows. The condition is legal but suspicious, and the runner logs it instead of
+/// silently replaying without the delays.
+pub fn has_mixed_timing(events: &[MacroEvent]) -> bool {
+    let timed = events.iter().any(|e| e.timestamp > 0);
+    let delayed = events.iter().any(|e| e.event_type.is_delay());
+    timed && delayed
 }
 
 /// Upper bound on loop iterations so a stuck "held" gate can never pin a thread forever.
@@ -98,6 +107,14 @@ impl<'a> Runner<'a> {
         let mut stats = RunStats::default();
         let planned = plan_offsets(events);
         stats.planned_ms = planned.last().copied().unwrap_or(0);
+
+        if has_mixed_timing(events) {
+            tracing::warn!(
+                delays = events.iter().filter(|e| e.event_type.is_delay()).count(),
+                "macro mixes absolute timestamps with delay events; timestamps win and the \
+                 delay rows are not applied (MACRO_SPEC.md §E.3)"
+            );
+        }
 
         // MACRO_SPEC.md §B.4: `playOnce` runs once. `repeatNTimes` runs num_repeat times
         // (clamped >= 1 — the DB column is uint8 with a client-side floor of 1). Everything
@@ -248,23 +265,6 @@ fn signed_tiny(v: u32) -> i32 {
         v if v < 128 => v as i32,
         _ => -1,
     }
-}
-
-/// Gate for held modes: true while the trigger key is physically down.
-pub fn held_gate(flag: Arc<AtomicBool>) -> impl FnMut(u32) -> bool {
-    move |_| flag.load(Ordering::Relaxed)
-}
-
-/// Convenience: run one macro to completion with a fixed iteration count.
-pub fn run_counted(
-    injector: &mut dyn Injector,
-    keymap: &Keymap,
-    wait: &mut dyn Wait,
-    events: &[MacroEvent],
-    opts: &PlaybackOptions,
-) -> Result<RunStats> {
-    let mut runner = Runner::new(injector, keymap, wait);
-    runner.execute(events, opts, &mut |_| false)
 }
 
 /// Total wall time a macro occupies, useful for `--dry-run` reporting.

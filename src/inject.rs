@@ -9,13 +9,10 @@
 //! notch) we emit `EV_SYN/SYN_REPORT` so the receiving application sees discrete steps rather
 //! than coalesced state.
 use std::path::Path;
+use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use evdev::EventType as EvType;
-
-use crate::keymap::{
-    BTN_BACK, BTN_EXTRA, BTN_FORWARD, BTN_LEFT, BTN_MIDDLE, BTN_RIGHT, BTN_SIDE, BTN_TASK,
-};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WheelAxis {
@@ -184,14 +181,43 @@ impl Injector for MockInjector {
     }
 }
 
-/// All BTN_* codes we may emit, for capability declaration / validation.
-pub const MOUSE_BUTTONS: [i32; 8] = [
-    BTN_LEFT,
-    BTN_RIGHT,
-    BTN_MIDDLE,
-    BTN_SIDE,
-    BTN_EXTRA,
-    BTN_FORWARD,
-    BTN_BACK,
-    BTN_TASK,
-];
+/// Injector view over a shared, mutex-guarded device.
+///
+/// The lock is taken per emission, not per macro. A looping macro sleeps between events, so
+/// holding the device for a whole run serialises every other macro behind it.
+pub struct LockedInjector<'a> {
+    shared: &'a Mutex<Box<dyn Injector>>,
+}
+
+impl<'a> LockedInjector<'a> {
+    pub fn new(shared: &'a Mutex<Box<dyn Injector>>) -> Self {
+        Self { shared }
+    }
+
+    fn with<T>(&self, f: impl FnOnce(&mut dyn Injector) -> Result<T>) -> Result<T> {
+        let mut guard = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+        f(&mut **guard)
+    }
+}
+
+impl Injector for LockedInjector<'_> {
+    fn key(&mut self, evdev_code: i32, pressed: bool) -> Result<()> {
+        self.with(|i| i.key(evdev_code, pressed))
+    }
+
+    fn button(&mut self, evdev_code: i32, pressed: bool) -> Result<()> {
+        self.with(|i| i.button(evdev_code, pressed))
+    }
+
+    fn wheel(&mut self, axis: WheelAxis, delta: i32) -> Result<()> {
+        self.with(|i| i.wheel(axis, delta))
+    }
+
+    fn sync(&mut self) -> Result<()> {
+        self.with(|i| i.sync())
+    }
+
+    fn describe(&self) -> &str {
+        "shared"
+    }
+}

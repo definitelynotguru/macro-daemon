@@ -15,7 +15,7 @@ replaced by a virtual one. Details of that decision are in [DESIGN.md](DESIGN.md
 
 ```bash
 cargo build --release     # target/release/macro-daemon
-cargo test                # 47 tests, no root, no devices required
+cargo test                # 55 tests, no root, no devices required
 ```
 
 Rust 1.75+. Dependencies: `evdev`, `uinput`, `serde`/`serde_json`, `clap`, `anyhow`, `tracing`,
@@ -88,7 +88,7 @@ Two layers: a daemon config and a directory of profiles.
 | `toggle_hotkey` | `KEY_*` name from `keymap.json`, or a numeric evdev code |
 | `focus_poll_ms` | focus poll interval for per-app rules |
 | `debounce_ms` | per-binding re-trigger guard |
-| `grab` | `EVIOCGRAB` the trigger devices (they stop reaching the rest of the system) |
+| `grab` | `EVIOCGRAB` the trigger devices (they stop reaching the rest of the system). Refused at startup when any binding sets `is_passthrough`, because then the key cannot reach the application. |
 
 ### `profiles/<name>.json`
 
@@ -220,7 +220,7 @@ Each is a `TODO`-style comment in code with the spec reference:
 |---|---|
 | `no readable input devices` | not in `input` group, or udev rule not applied |
 | `per-application rules disabled` | no `hyprctl`/`swaymsg`/`xdotool`/`xprop` on PATH |
-| macro fires its own output | you bound a key the macro itself emits; the daemon excludes its own device, but a *second* daemon instance would not |
+| macro fires its own output | the daemon excludes its own device and other synthetic keyboards (`ydotoold`, `wtype`, `uinput` in the name) during autodiscovery. An explicit `-d` path skips that filter, so do not point it at a virtual node |
 | nothing happens on Wayland with `grab: true` | grabbing removes the device from the compositor; use `grab: false` unless you know you want it |
 
 ## License
