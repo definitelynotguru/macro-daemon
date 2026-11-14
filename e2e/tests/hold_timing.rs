@@ -125,3 +125,47 @@ fn hold_ms_of_keeps_first_press_on_duplicate() {
         .duration_since(clocked.stamp(2).unwrap());
     assert!(hold > from_dup.as_secs_f64() * 1000.0);
 }
+
+#[test]
+#[should_panic(expected = "empty sample set")]
+fn stats_rejects_empty_samples() {
+    macro_e2e::stats::Stats::new(&[]);
+}
+
+#[test]
+fn cli_rejects_zero_iters_with_clear_error() {
+    let bin = env!("CARGO_BIN_EXE_macro-e2e");
+    let out = std::process::Command::new(bin)
+        .args(["--hold-ms", "400", "--iters", "0"])
+        .output()
+        .expect("binary runs");
+    assert!(!out.status.success(), "zero iters must fail");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--iters must be at least 1"),
+        "clear error expected, got: {stderr}"
+    );
+    assert!(
+        !String::from_utf8_lossy(&out.stdout).contains("median"),
+        "no partial results on stdout"
+    );
+}
+
+#[test]
+fn cli_json_stdout_is_one_object_even_with_device_flag() {
+    let bin = env!("CARGO_BIN_EXE_macro-e2e");
+    let out = std::process::Command::new(bin)
+        .args(["--hold-ms", "400", "--iters", "2", "--json", "--device"])
+        .output()
+        .expect("binary runs");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.trim().split('\n').collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "stdout must be exactly one line: {stdout:?}"
+    );
+    let parsed: serde_json::Value = serde_json::from_str(lines[0]).expect("valid json object");
+    assert_eq!(parsed["iters"], 2);
+    assert_eq!(parsed["level"], "engine");
+}
