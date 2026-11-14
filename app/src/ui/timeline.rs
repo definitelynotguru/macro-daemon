@@ -1,6 +1,6 @@
 use gpui::{
-    div, px, rgb, AnyElement, App, Context, Entity, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, AnyElement, App, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    Render, SharedString, StatefulInteractiveElement, Styled, Window,
 };
 
 use crate::theme;
@@ -11,6 +11,7 @@ pub struct Timeline {
     delay_editing: Option<usize>,
     delay_value: Option<u32>,
     delay_focus: gpui::FocusHandle,
+    _subscription: gpui::Subscription,
 }
 
 struct BlockSpec {
@@ -24,9 +25,16 @@ struct BlockSpec {
 }
 
 impl BlockSpec {
-    fn render(&self, selected: bool, workspace: gpui::Entity<crate::workspace::Workspace>) -> gpui::AnyElement {
+    fn render(
+        &self,
+        selected: bool,
+        workspace: gpui::Entity<crate::workspace::Workspace>,
+    ) -> gpui::AnyElement {
         let base = div()
-            .id(gpui::ElementId::from(SharedString::from(format!("ev-{}", self.id))))
+            .id(gpui::ElementId::from(SharedString::from(format!(
+                "ev-{}",
+                self.id
+            ))))
             .flex()
             .items_center()
             .justify_center()
@@ -67,28 +75,15 @@ impl BlockSpec {
 }
 
 impl Timeline {
-    pub fn new(workspace: Entity<Workspace>, cx: &mut gpui::App) -> Self {
+    pub fn new(workspace: Entity<Workspace>, cx: &mut Context<Self>) -> Self {
+        let subscription = cx.observe(&workspace, |_, _, cx| cx.notify());
         Self {
             workspace,
             delay_editing: None,
             delay_value: None,
             delay_focus: cx.focus_handle(),
+            _subscription: subscription,
         }
-    }
-
-    fn open_delay_editor(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        self.delay_editing = Some(index);
-        if let Some(ms) = self
-            .workspace
-            .read(cx)
-            .selected()
-            .and_then(|m| m.events.get(index))
-            .map(|e| e.extra_data)
-        {
-            self.delay_value = Some(ms);
-        }
-        self.delay_focus.focus(window);
-        cx.notify();
     }
 
     fn commit_delay(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -134,7 +129,11 @@ impl Timeline {
                         id: i,
                         width: crate::schema::KEY_EVENT_WIDTH_PX,
                         label,
-                        bg: if down { theme::KEY_DOWN_BG } else { theme::KEY_UP_BG },
+                        bg: if down {
+                            theme::KEY_DOWN_BG
+                        } else {
+                            theme::KEY_UP_BG
+                        },
                         text: theme::TEXT,
                         round_left: !join.left,
                         round_right: !join.right,
@@ -208,7 +207,15 @@ impl Render for Timeline {
         let selected_event = self.workspace.read(cx).selected_event;
         if let Some(i) = selected_event {
             if delay_ids.contains(&i) && self.delay_editing != Some(i) {
-                self.open_delay_editor(i, _window, cx);
+                self.delay_editing = Some(i);
+                self.delay_value = self
+                    .workspace
+                    .read(cx)
+                    .selected()
+                    .and_then(|m| m.events.get(i))
+                    .map(|e| e.extra_data)
+                    .or(self.delay_value);
+                self.delay_focus.focus(_window);
             }
         }
         let delay_editor = selected_event
@@ -276,23 +283,36 @@ impl Render for Timeline {
 }
 
 impl Timeline {
-    fn delay_input_row(&mut self, index: usize, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let text = self
-            .delay_value
-            .map(|v| v.to_string())
-            .unwrap_or_default();
+    fn delay_input_row(
+        &mut self,
+        index: usize,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let text = self.delay_value.map(|v| v.to_string()).unwrap_or_default();
         let focused = self.delay_focus.is_focused(window);
         div()
-            .id(gpui::ElementId::NamedInteger("delay-input".into(), index as u64))
+            .id(gpui::ElementId::NamedInteger(
+                "delay-input".into(),
+                index as u64,
+            ))
             .min_w_16()
             .px_2()
             .py_1()
             .bg(rgb(theme::BG))
             .rounded_sm()
             .border_b_1()
-            .border_color(rgb(if focused { theme::ACCENT } else { theme::BORDER }))
+            .border_color(rgb(if focused {
+                theme::ACCENT
+            } else {
+                theme::BORDER
+            }))
             .text_size(px(12.0))
-            .text_color(rgb(if text.is_empty() { theme::MUTED } else { theme::TEXT }))
+            .text_color(rgb(if text.is_empty() {
+                theme::MUTED
+            } else {
+                theme::TEXT
+            }))
             .track_focus(&self.delay_focus)
             .on_key_down(cx.listener(move |this, event: &gpui::KeyDownEvent, _, cx| {
                 let key = event.keystroke.key.as_str();
@@ -350,7 +370,10 @@ fn render_delay_editor(
     cx: &mut Context<Timeline>,
 ) -> AnyElement {
     div()
-        .id(gpui::ElementId::NamedInteger("delay-editor".into(), index as u64))
+        .id(gpui::ElementId::NamedInteger(
+            "delay-editor".into(),
+            index as u64,
+        ))
         .flex()
         .items_center()
         .gap_2()
@@ -359,10 +382,9 @@ fn render_delay_editor(
         .bg(rgb(theme::PANEL))
         .border_t_1()
         .border_color(rgb(theme::BORDER))
-        .on_mouse_down(
-            gpui::MouseButton::Left,
-            |_, _, cx: &mut App| cx.stop_propagation(),
-        )
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx: &mut App| {
+            cx.stop_propagation()
+        })
         .child(
             div()
                 .text_size(px(11.0))

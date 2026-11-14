@@ -5,4 +5,3 @@ pub mod statusbar;
 pub mod timeline;
 pub mod toolbar;
 pub mod widgets;
-

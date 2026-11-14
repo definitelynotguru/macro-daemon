@@ -1,7 +1,9 @@
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use macro_daemon::config::{Binding, EventType, MacroEvent, PlaybackOptions, TriggerData, binding_types};
+use macro_daemon::config::{
+    binding_types, Binding, EventType, MacroEvent, PlaybackOptions, TriggerData,
+};
 use macro_daemon::keymap::{Keymap, PAGE_PSEUDO};
 
 pub const KEY_EVENT_WIDTH_PX: f32 = 56.0;

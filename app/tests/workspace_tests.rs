@@ -1,12 +1,12 @@
 use std::path::Path;
 
 use macro_daemon::config::{
-    Binding, EventType, Macro, MacroEvent, PlaybackOptions, PlaybackType, ProfileFile, ProfileMeta,
-    TriggerData, binding_types,
+    binding_types, Binding, EventType, Macro, MacroEvent, PlaybackOptions, PlaybackType,
+    ProfileFile, ProfileMeta, TriggerData,
 };
 use macro_studio::schema::{
-    PLAYBACK_TABLE, direction_label, event_label, human_trigger, key_name, macro_total_ms,
-    new_macro_id,
+    direction_label, event_label, human_trigger, key_name, macro_total_ms, new_macro_id,
+    PLAYBACK_TABLE,
 };
 use macro_studio::workspace::{Status, Workspace};
 
@@ -88,7 +88,7 @@ fn round_trip_through_load_and_save() {
     let saved = std::fs::read_to_string(dir.join("sample.json")).unwrap();
     let reloaded: ProfileFile = serde_json::from_str(&saved).unwrap();
     reloaded.validate().unwrap();
-    let a = serde_json::to_value(&sample_file()).unwrap();
+    let a = serde_json::to_value(sample_file()).unwrap();
     let b = serde_json::to_value(&reloaded).unwrap();
     assert_eq!(a, b, "saved profile must be semantically identical");
 }
@@ -254,7 +254,10 @@ fn save_refuses_invalid_profile() {
     let doc = ws.open_mut().unwrap();
     doc.file.bindings[0].macro_id = Some("m-gone".to_string());
     assert!(ws.save_open_profile().is_err());
-    assert!(dir.join("sample.json").exists(), "file stays untouched on disk");
+    assert!(
+        dir.join("sample.json").exists(),
+        "file stays untouched on disk"
+    );
 }
 
 #[test]

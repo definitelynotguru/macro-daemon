@@ -99,8 +99,8 @@ impl Workspace {
     }
 
     fn read_profile(path: &Path) -> Result<ProfileFile> {
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let file: ProfileFile =
             serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
         file.validate()
@@ -120,16 +120,13 @@ impl Workspace {
 
     pub fn open_mut(&mut self) -> Option<&mut ProfileDoc> {
         let open = self.open_profile.clone()?;
-        self.profiles
-            .iter_mut()
-            .find(|p| &p.file_name == &open)
+        self.profiles.iter_mut().find(|p| p.file_name == open)
     }
 
     pub fn selected(&self) -> Option<&macro_daemon::config::Macro> {
         let id = self.selected_macro.as_ref()?;
         let doc = self.open()?;
-        doc.file
-            .macro_by_id(id)
+        doc.file.macro_by_id(id)
     }
 
     pub fn selected_binding(&self) -> Option<&macro_daemon::config::Binding> {
@@ -169,10 +166,7 @@ impl Workspace {
     }
 
     pub fn select_event(&mut self, index: usize) {
-        let Some(count) = self
-            .selected()
-            .map(|m| m.events.len())
-        else {
+        let Some(count) = self.selected().map(|m| m.events.len()) else {
             return;
         };
         if index >= count {
@@ -209,7 +203,12 @@ impl Workspace {
         let Some(doc) = self.open_mut() else {
             return;
         };
-        let Some(source) = doc.file.macros.iter().find(|m| m.id == id && m.is_deleted == 0) else {
+        let Some(source) = doc
+            .file
+            .macros
+            .iter()
+            .find(|m| m.id == id && m.is_deleted == 0)
+        else {
             return;
         };
         let mut copy = source.clone();
@@ -238,7 +237,9 @@ impl Workspace {
             return;
         };
         doc.file.macros.retain(|m| m.id != id);
-        doc.file.bindings.retain(|b| b.macro_id.as_deref() != Some(id));
+        doc.file
+            .bindings
+            .retain(|b| b.macro_id.as_deref() != Some(id));
         if self.selected_macro.as_deref() == Some(id) {
             self.clear_selection();
         }
@@ -246,11 +247,19 @@ impl Workspace {
         self.status = Status::Idle;
     }
 
-    pub fn set_trigger(&mut self, id: &str, apply: impl FnOnce(&mut macro_daemon::config::TriggerData)) {
+    pub fn set_trigger(
+        &mut self,
+        id: &str,
+        apply: impl FnOnce(&mut macro_daemon::config::TriggerData),
+    ) {
         self.mutate_binding(id, |b| apply(&mut b.trigger_data));
     }
 
-    pub fn set_playback(&mut self, id: &str, apply: impl FnOnce(&mut macro_daemon::config::PlaybackOptions)) {
+    pub fn set_playback(
+        &mut self,
+        id: &str,
+        apply: impl FnOnce(&mut macro_daemon::config::PlaybackOptions),
+    ) {
         self.mutate_binding(id, |b| apply(&mut b.playback_options_data));
     }
 
@@ -307,7 +316,12 @@ impl Workspace {
         self.dirty = true;
     }
 
-    pub fn update_event(&mut self, macro_id: &str, index: usize, apply: impl FnOnce(&mut macro_daemon::config::MacroEvent)) {
+    pub fn update_event(
+        &mut self,
+        macro_id: &str,
+        index: usize,
+        apply: impl FnOnce(&mut macro_daemon::config::MacroEvent),
+    ) {
         let Some(doc) = self.open_mut() else {
             return;
         };
@@ -336,8 +350,7 @@ impl Workspace {
         doc.file.validate()?;
         let text = serde_json::to_string_pretty(&doc.file)?;
         let path = self.dir.join(&file_name);
-        std::fs::write(&path, text)
-            .with_context(|| format!("writing {}", path.display()))?;
+        std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
         self.dirty = false;
         self.status = Status::Info(format!("Saved {file_name}"));
         Ok(())
@@ -345,5 +358,11 @@ impl Workspace {
 
     pub fn reload(&mut self) {
         self.load_dir(&self.dir.clone());
+    }
+}
+
+impl Default for Workspace {
+    fn default() -> Self {
+        Self::new()
     }
 }

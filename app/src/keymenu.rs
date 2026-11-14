@@ -1,4 +1,4 @@
-pub const KEY_CHOICES: [(u16, &'static str); 8] = [
+pub const KEY_CHOICES: [(u16, &str); 8] = [
     (0, "pick key"),
     (62, "F5"),
     (71, "Home"),

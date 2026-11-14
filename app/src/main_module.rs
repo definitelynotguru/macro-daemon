@@ -97,11 +97,11 @@ pub fn run_gui(dir: PathBuf) {
             },
             |_, cx| {
                 let workspace_entity = workspace.clone();
-                let view = cx.new(move |cx: &mut Context<StudioView>| {
+
+                cx.new(move |cx: &mut Context<StudioView>| {
                     let ws_entity = workspace_entity.clone();
                     StudioView::new(ws_entity, cx)
-                });
-                view
+                })
             },
         )
         .unwrap();

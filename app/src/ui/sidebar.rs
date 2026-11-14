@@ -1,6 +1,6 @@
 use gpui::prelude::*;
 use gpui::{
-    div, px, rgb, relative, AnyElement, Context, Entity, IntoElement, ParentElement, Render,
+    div, px, relative, rgb, AnyElement, Context, Entity, IntoElement, ParentElement, Render,
     StatefulInteractiveElement, Styled, Window,
 };
 
@@ -9,11 +9,24 @@ use crate::workspace::Workspace;
 
 pub struct Sidebar {
     workspace: Entity<Workspace>,
+    _subscription: gpui::Subscription,
+}
+
+struct ProfileRow {
+    file_name: String,
+    name: String,
+    badge: Option<String>,
+    is_open: bool,
+    macros: Vec<(String, String, String)>,
 }
 
 impl Sidebar {
-    pub fn new(workspace: Entity<Workspace>) -> Self {
-        Self { workspace }
+    pub fn new(workspace: Entity<Workspace>, cx: &mut Context<Self>) -> Self {
+        let subscription = cx.observe(&workspace, |_, _, cx| cx.notify());
+        Self {
+            workspace,
+            _subscription: subscription,
+        }
     }
 
     fn row(
@@ -21,7 +34,7 @@ impl Sidebar {
         sublabel: Option<String>,
         selected: bool,
         depth: usize,
-        id: &'static str,
+        id: gpui::ElementId,
         on_click: impl Fn(&mut Sidebar, &gpui::ClickEvent, &mut Window, &mut Context<Sidebar>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -30,11 +43,7 @@ impl Sidebar {
         } else {
             theme::PANEL
         };
-        let text = if selected {
-            theme::TEXT
-        } else {
-            theme::MUTED
-        };
+        let text = if selected { theme::TEXT } else { theme::MUTED };
         div()
             .id(id)
             .flex()
@@ -59,11 +68,7 @@ impl Sidebar {
                     .flex()
                     .flex_col()
                     .min_w_0()
-                    .child(
-                        div()
-                            .truncate()
-                            .child(label),
-                    )
+                    .child(div().truncate().child(label))
                     .children(sublabel.map(|s| {
                         div()
                             .text_size(px(10.0))
@@ -78,7 +83,7 @@ impl Sidebar {
     pub fn render_sidebar(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let keymap = self.workspace.read(cx).keymap.clone();
         let mut rows: Vec<AnyElement> = Vec::new();
-        let snapshot: Vec<(String, String, Option<String>, bool, Vec<(String, String, String)>)> = {
+        let snapshot: Vec<ProfileRow> = {
             let ws = self.workspace.read(cx);
             ws.profiles
                 .iter()
@@ -110,12 +115,25 @@ impl Sidebar {
                             (m.id.clone(), m.name.clone(), trigger)
                         })
                         .collect();
-                    (doc.file_name.clone(), name, badge, is_open, macros)
+                    ProfileRow {
+                        file_name: doc.file_name.clone(),
+                        name,
+                        badge,
+                        is_open,
+                        macros,
+                    }
                 })
                 .collect()
         };
         let selected_macro = self.workspace.read(cx).selected_macro.clone();
-        for (file_name, name, badge, is_open, macros) in &snapshot {
+        for ProfileRow {
+            file_name,
+            name,
+            badge,
+            is_open,
+            macros,
+        } in &snapshot
+        {
             let file_name = file_name.clone();
             let is_open = *is_open;
             rows.push(Self::row(
@@ -123,7 +141,7 @@ impl Sidebar {
                 badge.clone(),
                 is_open,
                 0,
-                "profile",
+                gpui::ElementId::Name(gpui::SharedString::from(format!("profile-{file_name}"))),
                 {
                     let file_name = file_name.clone();
                     move |this, _, _, cx| {
@@ -143,7 +161,7 @@ impl Sidebar {
                         Some(trigger.clone()),
                         selected,
                         1,
-                        "macro",
+                        gpui::ElementId::Name(gpui::SharedString::from(format!("macro-{mid}"))),
                         {
                             let id = mid.clone();
                             move |this, _, _, cx| {

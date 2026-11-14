@@ -15,11 +15,7 @@ impl<T: Sized> When for Stateful<T> {}
 
 use crate::theme;
 
-pub fn toolbar_button(
-    id: &'static str,
-    label: &'static str,
-    enabled: bool,
-) -> Stateful<Div> {
+pub fn toolbar_button(id: &'static str, label: &'static str, enabled: bool) -> Stateful<Div> {
     let text = if enabled { theme::TEXT } else { theme::MUTED };
     let bg = if enabled { theme::BUTTON } else { theme::PANEL };
     div()
@@ -31,9 +27,7 @@ pub fn toolbar_button(
         .text_size(px(12.0))
         .text_color(rgb(text))
         .when(enabled, |b| {
-            b.cursor_pointer()
-                .hover(|s| s.bg(rgb(theme::PANEL_HOVER)))
+            b.cursor_pointer().hover(|s| s.bg(rgb(theme::PANEL_HOVER)))
         })
         .child(label.to_string())
 }
-

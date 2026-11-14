@@ -1,6 +1,7 @@
 use gpui::{
-    div, px, rgb, App, AppContext, Focusable as _, Context, Div, Entity, InteractiveElement, IntoElement,
-    ParentElement, Render, Stateful, StatefulInteractiveElement, Styled, Window,
+    div, px, rgb, App, AppContext, Context, Div, Entity, Focusable as _, InteractiveElement,
+    IntoElement, ParentElement, Render, SharedString, Stateful, StatefulInteractiveElement, Styled,
+    Window,
 };
 
 use crate::theme;
@@ -10,14 +11,18 @@ use crate::workspace::Workspace;
 pub struct Properties {
     workspace: Entity<Workspace>,
     app_rule_input: Entity<InputField>,
+    _subscription: gpui::Subscription,
 }
 
 impl Properties {
-    pub fn new(workspace: Entity<Workspace>, cx: &mut gpui::App) -> Self {
-        let app_rule_input = cx.new(|cx| InputField::new(cx.focus_handle(), "add path rule (Enter)"));
+    pub fn new(workspace: Entity<Workspace>, cx: &mut Context<Self>) -> Self {
+        let app_rule_input =
+            cx.new(|cx| InputField::new(cx.focus_handle(), "add path rule (Enter)"));
+        let subscription = cx.observe(&workspace, |_, _, cx| cx.notify());
         Self {
             workspace,
             app_rule_input,
+            _subscription: subscription,
         }
     }
 
@@ -44,7 +49,7 @@ fn section_label(text: &str) -> gpui::AnyElement {
         .into_any_element()
 }
 
-fn pill(id: &'static str, label: &str, muted: bool) -> Stateful<Div> {
+fn pill(id: gpui::ElementId, label: &str, muted: bool) -> Stateful<Div> {
     div()
         .id(id)
         .px_2()
@@ -118,18 +123,16 @@ impl Render for Properties {
                         .flex()
                         .flex_wrap()
                         .gap_1()
-                        .children(
-                            crate::keymenu::KEY_CHOICES.iter().map(|(code, label)| {
-                                pill_trigger_direction(
-                                    *code,
-                                    *label,
-                                    t,
-                                    macro_id.clone(),
-                                    self.workspace.clone(),
-                                )
-                                .into_any_element()
-                            }),
-                        )
+                        .children(crate::keymenu::KEY_CHOICES.iter().map(|(code, label)| {
+                            pill_trigger_direction(
+                                *code,
+                                label,
+                                t,
+                                macro_id.clone(),
+                                self.workspace.clone(),
+                            )
+                            .into_any_element()
+                        }))
                         .into_any_element(),
                 );
                 children.push(
@@ -138,9 +141,10 @@ impl Render for Properties {
                         .gap_1()
                         .child(
                             pill_direction(
-                                "dir-press",
+                                gpui::ElementId::Name(SharedString::from("dir-press")),
                                 "press",
                                 t.direction > 0,
+                                1,
                                 macro_id.clone(),
                                 self.workspace.clone(),
                             )
@@ -148,9 +152,10 @@ impl Render for Properties {
                         )
                         .child(
                             pill_direction(
-                                "dir-release",
+                                gpui::ElementId::Name(SharedString::from("dir-release")),
                                 "release",
                                 t.direction < 0,
+                                -1,
                                 macro_id.clone(),
                                 self.workspace.clone(),
                             )
@@ -174,18 +179,16 @@ impl Render for Properties {
                     .flex()
                     .flex_wrap()
                     .gap_1()
-                    .children(
-                        crate::schema::PLAYBACK_TABLE.iter().map(|entry| {
-                            pill_playback(
-                                entry.code,
-                                entry.label,
-                                p.playback_type,
-                                macro_id.clone(),
-                                self.workspace.clone(),
-                            )
-                            .into_any_element()
-                        }),
-                    )
+                    .children(crate::schema::PLAYBACK_TABLE.iter().map(|entry| {
+                        pill_playback(
+                            entry.code,
+                            entry.label,
+                            p.playback_type,
+                            macro_id.clone(),
+                            self.workspace.clone(),
+                        )
+                        .into_any_element()
+                    }))
                     .into_any_element(),
             );
             if p.playback_type.uses_num_repeat() {
@@ -196,13 +199,23 @@ impl Render for Properties {
                         .items_center()
                         .gap_1()
                         .child(
-                            pill_num_repeat("nr-minus", macro_id.clone(), self.workspace.clone(), -1)
-                                .into_any_element(),
+                            pill_num_repeat(
+                                gpui::ElementId::Name(SharedString::from("nr-minus")),
+                                macro_id.clone(),
+                                self.workspace.clone(),
+                                -1,
+                            )
+                            .into_any_element(),
                         )
                         .child(field_box(p.num_repeat.to_string()))
                         .child(
-                            pill_num_repeat("nr-plus", macro_id.clone(), self.workspace.clone(), 1)
-                                .into_any_element(),
+                            pill_num_repeat(
+                                gpui::ElementId::Name(SharedString::from("nr-plus")),
+                                macro_id.clone(),
+                                self.workspace.clone(),
+                                1,
+                            )
+                            .into_any_element(),
                         )
                         .into_any_element(),
                 );
@@ -216,7 +229,7 @@ impl Render for Properties {
                         .gap_1()
                         .child(
                             pill_repeat_delay(
-                                "rd-minus",
+                                gpui::ElementId::Name(SharedString::from("rd-minus")),
                                 macro_id.clone(),
                                 self.workspace.clone(),
                                 -5,
@@ -225,8 +238,13 @@ impl Render for Properties {
                         )
                         .child(field_box(p.repeat_delay.to_string()))
                         .child(
-                            pill_repeat_delay("rd-plus", macro_id.clone(), self.workspace.clone(), 5)
-                                .into_any_element(),
+                            pill_repeat_delay(
+                                gpui::ElementId::Name(SharedString::from("rd-plus")),
+                                macro_id.clone(),
+                                self.workspace.clone(),
+                                5,
+                            )
+                            .into_any_element(),
                         )
                         .into_any_element(),
                 );
@@ -238,9 +256,10 @@ impl Render for Properties {
                     .gap_1()
                     .child(
                         pill_direction_playback(
-                            "pb-forward",
+                            gpui::ElementId::Name(SharedString::from("pb-forward")),
                             crate::schema::direction_label(1),
                             p.direction > 0,
+                            1,
                             macro_id.clone(),
                             self.workspace.clone(),
                         )
@@ -248,9 +267,10 @@ impl Render for Properties {
                     )
                     .child(
                         pill_direction_playback(
-                            "pb-reverse",
+                            gpui::ElementId::Name(SharedString::from("pb-reverse")),
                             crate::schema::direction_label(-1),
                             p.direction < 0,
+                            -1,
                             macro_id.clone(),
                             self.workspace.clone(),
                         )
@@ -301,14 +321,12 @@ impl Render for Properties {
                 .gap_1()
                 .key_context("AppRuleInput")
                 .track_focus(&self.app_rule_input.read(cx).focus_handle(cx))
-                .capture_key_down(cx.listener(
-                    |this, event: &gpui::KeyDownEvent, window, cx| {
-                        if event.keystroke.key == "enter" {
-                            this.add_rule_from_input(window, cx);
-                            cx.stop_propagation();
-                        }
-                    },
-                ))
+                .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                    if event.keystroke.key == "enter" {
+                        this.add_rule_from_input(window, cx);
+                        cx.stop_propagation();
+                    }
+                }))
                 .child(self.app_rule_input.clone())
                 .child(
                     div()
@@ -321,11 +339,9 @@ impl Render for Properties {
                         .cursor_pointer()
                         .hover(|s| s.bg(rgb(theme::PANEL_HOVER)))
                         .child("+ add")
-                        .on_click(cx.listener(
-                            |this, _: &gpui::ClickEvent, window, cx| {
-                                this.add_rule_from_input(window, cx)
-                            },
-                        ))
+                        .on_click(cx.listener(|this, _: &gpui::ClickEvent, window, cx| {
+                            this.add_rule_from_input(window, cx)
+                        }))
                         .into_any_element(),
                 )
                 .into_any_element(),
@@ -361,8 +377,7 @@ fn pill_trigger_direction(
     } else {
         label.to_string()
     };
-    let id: &'static str = Box::leak(format!("trg-{code}").into_boxed_str());
-    pill(id, &display, !selected).on_click(move |_, _, cx: &mut App| {
+    pill(named_id("trg", code as usize), &display, !selected).on_click(move |_, _, cx: &mut App| {
         workspace.update(cx, |ws, cx| {
             ws.set_trigger(&macro_id, |tr| {
                 tr.hid_code = code;
@@ -375,13 +390,13 @@ fn pill_trigger_direction(
 }
 
 fn pill_direction(
-    id: &'static str,
+    id: gpui::ElementId,
     label: &'static str,
     selected: bool,
+    delta: i8,
     macro_id: String,
     workspace: Entity<Workspace>,
 ) -> Stateful<Div> {
-    let delta: i8 = if id == "dir-press" { 1 } else { -1 };
     pill(id, label, !selected).on_click(move |_, _, cx: &mut App| {
         workspace.update(cx, |ws, cx| {
             ws.set_trigger(&macro_id, |tr| tr.direction = delta);
@@ -397,10 +412,9 @@ fn pill_playback(
     macro_id: String,
     workspace: Entity<Workspace>,
 ) -> Stateful<Div> {
-    let selected = current
-        == macro_daemon::config::PlaybackType::from_client(code).unwrap_or(current);
-    let id: &'static str = Box::leak(format!("pb-{code}").into_boxed_str());
-    pill(id, label, !selected).on_click(move |_, _, cx: &mut App| {
+    let selected =
+        current == macro_daemon::config::PlaybackType::from_client(code).unwrap_or(current);
+    pill(named_id("pb", code as usize), label, !selected).on_click(move |_, _, cx: &mut App| {
         workspace.update(cx, |ws, cx| {
             ws.set_playback(&macro_id, |p| {
                 if let Ok(t) = macro_daemon::config::PlaybackType::from_client(code) {
@@ -413,13 +427,13 @@ fn pill_playback(
 }
 
 fn pill_direction_playback(
-    id: &'static str,
+    id: gpui::ElementId,
     label: &'static str,
     selected: bool,
+    delta: i8,
     macro_id: String,
     workspace: Entity<Workspace>,
 ) -> Stateful<Div> {
-    let delta: i8 = if id == "pb-forward" { 1 } else { -1 };
     pill(id, label, !selected).on_click(move |_, _, cx: &mut App| {
         workspace.update(cx, |ws, cx| {
             ws.set_direction(&macro_id, delta);
@@ -429,49 +443,47 @@ fn pill_direction_playback(
 }
 
 fn pill_num_repeat(
-    id: &'static str,
+    id: gpui::ElementId,
     macro_id: String,
     workspace: Entity<Workspace>,
     delta: i16,
 ) -> Stateful<Div> {
-    pill(id, if delta < 0 { "−" } else { "+" }, false)
-        .on_click(move |_, _, cx: &mut App| {
-            workspace.update(cx, |ws, cx| {
-                let current = ws
-                    .selected_binding()
-                    .map(|b| b.playback_options_data.num_repeat)
-                    .unwrap_or(1);
-                let next = if delta < 0 {
-                    current.saturating_sub(delta.unsigned_abs() as u8).max(1)
-                } else {
-                    current.saturating_add(delta as u8)
-                };
-                ws.set_num_repeat(&macro_id, next);
-                cx.notify();
-            })
+    pill(id, if delta < 0 { "−" } else { "+" }, false).on_click(move |_, _, cx: &mut App| {
+        workspace.update(cx, |ws, cx| {
+            let current = ws
+                .selected_binding()
+                .map(|b| b.playback_options_data.num_repeat)
+                .unwrap_or(1);
+            let next = if delta < 0 {
+                current.saturating_sub(delta.unsigned_abs() as u8).max(1)
+            } else {
+                current.saturating_add(delta as u8)
+            };
+            ws.set_num_repeat(&macro_id, next);
+            cx.notify();
         })
+    })
 }
 
 fn pill_repeat_delay(
-    id: &'static str,
+    id: gpui::ElementId,
     macro_id: String,
     workspace: Entity<Workspace>,
     delta: i16,
 ) -> Stateful<Div> {
-    pill(id, if delta < 0 { "−" } else { "+" }, false)
-        .on_click(move |_, _, cx: &mut App| {
-            workspace.update(cx, |ws, cx| {
-                let current = ws
-                    .selected_binding()
-                    .map(|b| b.playback_options_data.repeat_delay)
-                    .unwrap_or(15);
-                let next = if delta < 0 {
-                    current.saturating_sub(delta.unsigned_abs() as u16)
-                } else {
-                    current.saturating_add(delta as u16)
-                };
-                ws.set_repeat_delay(&macro_id, next);
-                cx.notify();
-            })
+    pill(id, if delta < 0 { "−" } else { "+" }, false).on_click(move |_, _, cx: &mut App| {
+        workspace.update(cx, |ws, cx| {
+            let current = ws
+                .selected_binding()
+                .map(|b| b.playback_options_data.repeat_delay)
+                .unwrap_or(15);
+            let next = if delta < 0 {
+                current.saturating_sub(delta.unsigned_abs())
+            } else {
+                current.saturating_add(delta as u16)
+            };
+            ws.set_repeat_delay(&macro_id, next);
+            cx.notify();
         })
+    })
 }

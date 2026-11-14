@@ -1,18 +1,21 @@
 use gpui::prelude::*;
-use gpui::{
-    div, px, rgb, Context, Entity, IntoElement, ParentElement, Render, Styled, Window,
-};
+use gpui::{div, px, rgb, Context, Entity, IntoElement, ParentElement, Render, Styled, Window};
 
 use crate::theme;
 use crate::workspace::{Status, Workspace};
 
 pub struct Statusbar {
     workspace: Entity<Workspace>,
+    _subscription: gpui::Subscription,
 }
 
 impl Statusbar {
-    pub fn new(workspace: Entity<Workspace>) -> Self {
-        Self { workspace }
+    pub fn new(workspace: Entity<Workspace>, cx: &mut gpui::Context<Self>) -> Self {
+        let subscription = cx.observe(&workspace, |_, _, cx| cx.notify());
+        Self {
+            workspace,
+            _subscription: subscription,
+        }
     }
 }
 
@@ -22,11 +25,7 @@ impl Render for Statusbar {
             let ws = self.workspace.read(cx);
             (ws.dirty, ws.status.clone())
         };
-        let marker = if dirty {
-            "● unsaved"
-        } else {
-            "clean"
-        };
+        let marker = if dirty { "● unsaved" } else { "clean" };
         let (message, is_error) = match status {
             Status::Idle => (String::new(), false),
             Status::Info(msg) => (msg, false),

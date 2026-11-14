@@ -1,8 +1,13 @@
 use gpui::prelude::*;
-use gpui::{div, px, rgb, App, Context, Entity, IntoElement, ParentElement, Render, Styled, Window};
+use gpui::{
+    div, px, rgb, App, Context, Entity, IntoElement, ParentElement, Render, Styled, Window,
+};
 
 use crate::theme;
-use crate::ui::{properties::Properties, sidebar::Sidebar, statusbar::Statusbar, timeline::Timeline, toolbar::Toolbar};
+use crate::ui::{
+    properties::Properties, sidebar::Sidebar, statusbar::Statusbar, timeline::Timeline,
+    toolbar::Toolbar,
+};
 use crate::workspace::Workspace;
 
 pub struct StudioView {
@@ -16,11 +21,11 @@ pub struct StudioView {
 
 impl StudioView {
     pub fn new(workspace: Entity<Workspace>, cx: &mut App) -> Self {
-        let sidebar = cx.new(|_| Sidebar::new(workspace.clone()));
+        let sidebar = cx.new(|cx| Sidebar::new(workspace.clone(), cx));
         let timeline = cx.new(|cx| Timeline::new(workspace.clone(), cx));
         let properties = cx.new(|cx| Properties::new(workspace.clone(), cx));
-        let toolbar = cx.new(|_| Toolbar::new(workspace.clone()));
-        let statusbar = cx.new(|_| Statusbar::new(workspace.clone()));
+        let toolbar = cx.new(|cx| Toolbar::new(workspace.clone(), cx));
+        let statusbar = cx.new(|cx| Statusbar::new(workspace.clone(), cx));
         Self {
             workspace,
             sidebar,
@@ -30,7 +35,6 @@ impl StudioView {
             statusbar,
         }
     }
-
 }
 
 impl Render for StudioView {
