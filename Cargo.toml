@@ -1,3 +1,7 @@
+[workspace]
+members = ["e2e"]
+resolver = "2"
+
 [package]
 name = "macro_daemon"
 version = "0.1.1"
