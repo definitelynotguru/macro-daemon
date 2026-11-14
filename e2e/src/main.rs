@@ -106,19 +106,32 @@ fn describe_device(json: bool) -> bool {
 }
 
 /// Device-level probe: inject through the real uinput node.
-fn device_level(hold_ms: u32) -> Result<()> {
+fn device_level(hold_ms: u32, iters: usize, json: bool) -> Result<()> {
     let keymap = Keymap::load_embedded()?;
     let mut injector = UinputInjector::create("macro-e2e-probe")
         .context("creating uinput device (device-level probe)")?;
+    let note = |msg: &str| {
+        if json {
+            eprintln!("{msg}");
+        } else {
+            println!("{msg}");
+        }
+    };
+    note(&format!(
+        "device ready as virtual keyboard \"macro-e2e-probe\"; attach your reader \
+         now, playback of {iters} hold-{hold_ms}ms macros starts in 5 s"
+    ));
+    std::thread::sleep(std::time::Duration::from_secs(5));
     let mut wait = RealWait;
     let mut runner = Runner::new(&mut injector, &keymap, &mut wait);
-    runner.execute(&hold_macro(hold_ms).events, &play_once(), &mut |_| true)?;
-    println!(
-        "device level: injected one hold-{}ms macro through /dev/uinput as \
-         virtual keyboard \"macro-e2e-probe\"; automated readback is not wired \
-         into this harness (see docs/e2e-timing.md for manual verification)",
-        hold_ms
-    );
+    for _ in 0..iters {
+        runner.execute(&hold_macro(hold_ms).events, &play_once(), &mut |_| true)?;
+    }
+    note(&format!(
+        "device level: injected {iters} hold-{hold_ms}ms macros through /dev/uinput \
+         as virtual keyboard \"macro-e2e-probe\"; automated readback is not wired \
+         into this harness (see docs/e2e-timing.md for manual verification)"
+    ));
     Ok(())
 }
 
@@ -133,8 +146,8 @@ struct Cli {
     hold_ms: u32,
 
     /// Iterations to run and fold into the statistics.
-    #[arg(long, default_value_t = 30)]
-    iters: usize,
+    #[arg(long)]
+    iters: Option<usize>,
 
     /// Machine-readable output: one JSON object on stdout, nothing else.
     #[arg(long)]
@@ -150,17 +163,22 @@ fn main() -> Result<()> {
     let target = f64::from(cli.hold_ms);
     let tolerance = 10.0;
 
+    let iters = cli.iters.unwrap_or(30);
+    anyhow::ensure!(iters > 0, "--iters must be at least 1");
+
     let device_available = describe_device(cli.json);
     if cli.device {
         if device_available {
-            device_level(cli.hold_ms)?;
+            device_level(cli.hold_ms, iters, cli.json)?;
+        } else if cli.json {
+            eprintln!("--device given but /dev/uinput does not exist; device-level run skipped");
         } else {
             println!("--device given but /dev/uinput does not exist; device-level run skipped");
         }
     }
 
-    let mut holds = Vec::with_capacity(cli.iters);
-    for _ in 0..cli.iters {
+    let mut holds = Vec::with_capacity(iters);
+    for _ in 0..iters {
         holds.push(run_iteration(cli.hold_ms)?);
     }
 
