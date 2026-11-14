@@ -6,6 +6,7 @@ use macro_daemon::config::ProfileFile;
 pub struct ProfileDoc {
     pub file_name: String,
     pub file: ProfileFile,
+    pub dirty: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -22,7 +23,6 @@ pub struct Workspace {
     pub open_profile: Option<String>,
     pub selected_macro: Option<String>,
     pub selected_event: Option<usize>,
-    pub dirty: bool,
     pub status: Status,
 }
 
@@ -35,7 +35,6 @@ impl Workspace {
             open_profile: None,
             selected_macro: None,
             selected_event: None,
-            dirty: false,
             status: Status::Idle,
         }
     }
@@ -48,7 +47,6 @@ impl Workspace {
             self.profiles = Vec::new();
             self.open_profile = None;
             self.clear_selection();
-            self.dirty = false;
             self.status = Status::Error(format!("cannot read {}", dir.display()));
             return;
         };
@@ -74,7 +72,11 @@ impl Workspace {
                     if file.profile.name.is_empty() {
                         file.profile.name = file_name.trim_end_matches(".json").to_string();
                     }
-                    docs.push(ProfileDoc { file_name, file });
+                    docs.push(ProfileDoc {
+                        file_name,
+                        file,
+                        dirty: false,
+                    });
                 }
                 Err(err) => errors.push(format!("{file_name}: {err:#}")),
             }
@@ -90,7 +92,6 @@ impl Workspace {
             self.open_profile = self.profiles.first().map(|p| p.file_name.clone());
         }
         self.clear_selection();
-        self.dirty = false;
         if errors.is_empty() {
             self.status = Status::Idle;
         } else {
@@ -111,6 +112,10 @@ impl Workspace {
     fn clear_selection(&mut self) {
         self.selected_macro = None;
         self.selected_event = None;
+    }
+
+    pub fn dirty(&self) -> bool {
+        self.profiles.iter().any(|p| p.dirty)
     }
 
     pub fn open(&self) -> Option<&ProfileDoc> {
@@ -183,6 +188,7 @@ impl Workspace {
         let Some(doc) = self.open_mut() else {
             return;
         };
+        doc.dirty = true;
         doc.file.macros.push(macro_daemon::config::Macro {
             id: id.clone(),
             name: "new-macro".to_string(),
@@ -195,7 +201,6 @@ impl Workspace {
         doc.file.bindings.push(binding);
         self.selected_macro = Some(id);
         self.selected_event = None;
-        self.dirty = true;
         self.status = Status::Idle;
     }
 
@@ -226,24 +231,23 @@ impl Workspace {
             binding.macro_id = Some(new_id.clone());
             doc.file.bindings.push(binding);
         }
+        doc.dirty = true;
         self.selected_macro = Some(new_id);
         self.selected_event = None;
-        self.dirty = true;
         self.status = Status::Idle;
     }
 
     pub fn delete_macro(&mut self, id: &str) {
-        let Some(doc) = self.open_mut() else {
-            return;
-        };
-        doc.file.macros.retain(|m| m.id != id);
-        doc.file
-            .bindings
-            .retain(|b| b.macro_id.as_deref() != Some(id));
+        if let Some(doc) = self.open_mut() {
+            doc.file.macros.retain(|m| m.id != id);
+            doc.file
+                .bindings
+                .retain(|b| b.macro_id.as_deref() != Some(id));
+            doc.dirty = true;
+        }
         if self.selected_macro.as_deref() == Some(id) {
             self.clear_selection();
         }
-        self.dirty = true;
         self.status = Status::Idle;
     }
 
@@ -276,7 +280,7 @@ impl Workspace {
             return;
         };
         apply(binding);
-        self.dirty = true;
+        doc.dirty = true;
     }
 
     pub fn set_num_repeat(&mut self, id: &str, value: u8) {
@@ -302,7 +306,7 @@ impl Workspace {
             return;
         }
         doc.file.profile.apps.push(path);
-        self.dirty = true;
+        doc.dirty = true;
     }
 
     pub fn remove_app_rule(&mut self, index: usize) {
@@ -313,7 +317,7 @@ impl Workspace {
             return;
         }
         doc.file.profile.apps.remove(index);
-        self.dirty = true;
+        doc.dirty = true;
     }
 
     pub fn update_event(
@@ -337,21 +341,25 @@ impl Workspace {
             return;
         }
         apply(&mut m.events[index]);
-        self.dirty = true;
+        doc.dirty = true;
     }
 
     pub fn save_open_profile(&mut self) -> Result<()> {
         let Some(file_name) = self.open_profile.clone() else {
             anyhow::bail!("no profile open");
         };
-        let Some(doc) = self.open_mut() else {
-            anyhow::bail!("no profile open");
+        let text = {
+            let Some(doc) = self.open_mut() else {
+                anyhow::bail!("no profile open");
+            };
+            doc.file.validate()?;
+            serde_json::to_string_pretty(&doc.file)?
         };
-        doc.file.validate()?;
-        let text = serde_json::to_string_pretty(&doc.file)?;
         let path = self.dir.join(&file_name);
         std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
-        self.dirty = false;
+        if let Some(doc) = self.open_mut() {
+            doc.dirty = false;
+        }
         self.status = Status::Info(format!("Saved {file_name}"));
         Ok(())
     }

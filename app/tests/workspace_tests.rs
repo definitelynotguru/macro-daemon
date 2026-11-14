@@ -83,7 +83,7 @@ fn round_trip_through_load_and_save() {
     assert_eq!(ws.selected_event, Some(2));
 
     ws.save_open_profile().unwrap();
-    assert!(!ws.dirty);
+    assert!(!ws.dirty());
 
     let saved = std::fs::read_to_string(dir.join("sample.json")).unwrap();
     let reloaded: ProfileFile = serde_json::from_str(&saved).unwrap();
@@ -107,7 +107,7 @@ fn delete_selected_macro_clears_selection() {
     ws.delete_macro("m-1");
     assert_eq!(ws.selected_macro, None);
     assert_eq!(ws.selected_event, None);
-    assert!(ws.dirty);
+    assert!(ws.dirty());
 
     ws.select_macro("m-2");
     ws.select_macro("missing");
@@ -151,7 +151,7 @@ fn new_macro_gets_binding_and_default_playback() {
 
     let id = new_macro_id();
     ws.new_macro(id.clone(), macro_studio::schema::default_binding(&id));
-    assert!(ws.dirty);
+    assert!(ws.dirty());
     assert_eq!(ws.selected_macro.as_deref(), Some(id.as_str()));
     let doc = ws.open().unwrap();
     let m = doc.file.macro_by_id(&id).unwrap();
@@ -230,7 +230,7 @@ fn app_rules_add_remove_and_save() {
     ws.select_profile("sample.json");
 
     ws.add_app_rule("/usr/bin/bar".to_string());
-    assert!(ws.dirty);
+    assert!(ws.dirty());
     ws.add_app_rule("".to_string());
     let doc = ws.open().unwrap();
     assert_eq!(doc.file.profile.apps.len(), 2);
@@ -270,10 +270,10 @@ fn reload_discards_edits_and_keeps_open_profile() {
     ws.select_profile("sample.json");
     ws.select_macro("m-1");
     ws.delete_macro("m-1");
-    assert!(ws.dirty);
+    assert!(ws.dirty());
 
     ws.reload();
-    assert!(!ws.dirty);
+    assert!(!ws.dirty());
     assert_eq!(ws.open_profile.as_deref(), Some("sample.json"));
     let doc = ws.open().unwrap();
     assert_eq!(doc.file.macros.len(), 2, "edits discarded, disk state back");
@@ -292,4 +292,56 @@ fn load_reports_error_per_file_without_failing_workspace() {
     ws.load_dir(&dir);
     assert_eq!(ws.profiles.len(), 1);
     assert!(matches!(ws.status, Status::Error(_)));
+}
+
+#[test]
+fn saving_one_profile_keeps_other_profiles_dirty() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    write_profile(&dir, "a.json", &sample_file());
+    let mut other = sample_file();
+    other.profile.name = "other".to_string();
+    write_profile(&dir, "b.json", &other);
+
+    let mut ws = Workspace::new();
+    ws.load_dir(&dir);
+    ws.select_profile("a.json");
+    ws.select_macro("m-1");
+    ws.delete_macro("m-1");
+    assert!(ws.dirty(), "workspace is dirty while a is edited");
+
+    ws.select_profile("b.json");
+    assert!(ws.dirty(), "switching profiles must not clear a's edits");
+    assert!(ws.save_open_profile().is_ok(), "b saves");
+    assert!(
+        ws.dirty(),
+        "a is still unsaved after saving b; the flag must not be global"
+    );
+
+    ws.select_profile("a.json");
+    assert!(ws.dirty(), "returning to a shows it as unsaved");
+    assert!(ws.save_open_profile().is_ok());
+    assert!(!ws.dirty(), "saving the last dirty profile clears the flag");
+}
+
+#[test]
+fn key_choices_match_keymap_names() {
+    let keymap = macro_daemon::keymap::Keymap::load_embedded().unwrap();
+    for (code, label) in macro_studio::keymenu::KEY_CHOICES {
+        if code == 0 {
+            continue;
+        }
+        let key = keymap
+            .lookup(macro_studio::keymenu::KEY_PAGE, code)
+            .unwrap_or_else(|| panic!("usage {code} missing from keymap"));
+        let name = key.name.trim_start_matches("KEY_").to_string();
+        let normalized = name
+            .replace("LEFTCTRL", "L CTRL")
+            .replace("LEFTALT", "L ALT")
+            .replace("LEFTSHIFT", "L SHIFT");
+        assert!(
+            label.eq_ignore_ascii_case(&normalized),
+            "label {label} does not match keymap name {name} for usage {code}"
+        );
+    }
 }

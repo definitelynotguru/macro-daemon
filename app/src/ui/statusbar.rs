@@ -23,7 +23,7 @@ impl Render for Statusbar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (dirty, status) = {
             let ws = self.workspace.read(cx);
-            (ws.dirty, ws.status.clone())
+            (ws.dirty(), ws.status.clone())
         };
         let marker = if dirty { "● unsaved" } else { "clean" };
         let (message, is_error) = match status {

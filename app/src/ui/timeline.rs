@@ -8,10 +8,17 @@ use crate::workspace::Workspace;
 
 pub struct Timeline {
     workspace: Entity<Workspace>,
-    delay_editing: Option<usize>,
+    delay_editing: Option<DelayEditKey>,
     delay_value: Option<u32>,
     delay_focus: gpui::FocusHandle,
     _subscription: gpui::Subscription,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct DelayEditKey {
+    profile: usize,
+    macro_index: usize,
+    event: usize,
 }
 
 struct BlockSpec {
@@ -86,7 +93,7 @@ impl Timeline {
         }
     }
 
-    fn commit_delay(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn commit_delay(&mut self, key: DelayEditKey, cx: &mut Context<Self>) {
         let Some(ms) = self.delay_value.take() else {
             return;
         };
@@ -95,8 +102,27 @@ impl Timeline {
             let Some(macro_id) = ws.selected_macro.clone() else {
                 return;
             };
-            ws.update_event(&macro_id, index, |e| e.extra_data = ms);
+            ws.update_event(&macro_id, key.event, |e| e.extra_data = ms);
             cx.notify();
+        })
+    }
+
+    fn edit_key(&self, cx: &Context<Self>, event: usize) -> Option<DelayEditKey> {
+        let ws = self.workspace.read(cx);
+        let profile = ws
+            .profiles
+            .iter()
+            .position(|p| Some(p.file_name.as_str()) == ws.open_profile.as_deref())?;
+        let macro_index = ws
+            .open()?
+            .file
+            .macros
+            .iter()
+            .position(|m| Some(m.id.as_str()) == ws.selected_macro.as_deref())?;
+        Some(DelayEditKey {
+            profile,
+            macro_index,
+            event,
         })
     }
 
@@ -206,16 +232,18 @@ impl Render for Timeline {
         let (blocks, delay_ids) = self.strip(cx);
         let selected_event = self.workspace.read(cx).selected_event;
         if let Some(i) = selected_event {
-            if delay_ids.contains(&i) && self.delay_editing != Some(i) {
-                self.delay_editing = Some(i);
-                self.delay_value = self
-                    .workspace
-                    .read(cx)
-                    .selected()
-                    .and_then(|m| m.events.get(i))
-                    .map(|e| e.extra_data)
-                    .or(self.delay_value);
-                self.delay_focus.focus(_window);
+            let key = self.edit_key(cx, i);
+            if delay_ids.contains(&i) && self.delay_editing.is_none() {
+                if let Some(key) = key {
+                    self.delay_editing = Some(key);
+                    self.delay_value = self
+                        .workspace
+                        .read(cx)
+                        .selected()
+                        .and_then(|m| m.events.get(i))
+                        .map(|e| e.extra_data);
+                    self.delay_focus.focus(_window);
+                }
             }
         }
         let delay_editor = selected_event
@@ -326,7 +354,9 @@ impl Timeline {
                             .then(|| key.to_string())
                     });
                 if key == "enter" {
-                    this.commit_delay(index, cx);
+                    if let Some(key) = this.delay_editing {
+                        this.commit_delay(key, cx);
+                    }
                     cx.stop_propagation();
                     return;
                 }
@@ -428,7 +458,13 @@ fn nudge_button(
                 let next = (ev.extra_data as i64 + delta).clamp(0, u32::MAX as i64) as u32;
                 ws.update_event(&macro_id, index, |e| e.extra_data = next);
                 cx.notify();
-            })
+            });
+            this.delay_value = this
+                .workspace
+                .read(cx)
+                .selected()
+                .and_then(|m| m.events.get(index))
+                .map(|e| e.extra_data);
         }))
         .child(label)
         .into_any_element()

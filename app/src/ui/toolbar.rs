@@ -22,7 +22,7 @@ impl Toolbar {
 
 impl Render for Toolbar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let dirty = self.workspace.read(cx).dirty;
+        let dirty = self.workspace.read(cx).dirty();
         div()
             .flex()
             .items_center()

@@ -151,15 +151,10 @@ impl Render for Properties {
                             .into_any_element(),
                         )
                         .child(
-                            pill_direction(
-                                gpui::ElementId::Name(SharedString::from("dir-release")),
-                                "release",
-                                t.direction < 0,
-                                -1,
-                                macro_id.clone(),
-                                self.workspace.clone(),
-                            )
-                            .into_any_element(),
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(rgb(theme::MUTED))
+                                .child("release triggers: not supported by the daemon"),
                         )
                         .into_any_element(),
                 );
@@ -266,15 +261,10 @@ impl Render for Properties {
                         .into_any_element(),
                     )
                     .child(
-                        pill_direction_playback(
-                            gpui::ElementId::Name(SharedString::from("pb-reverse")),
-                            crate::schema::direction_label(-1),
-                            p.direction < 0,
-                            -1,
-                            macro_id.clone(),
-                            self.workspace.clone(),
-                        )
-                        .into_any_element(),
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(rgb(theme::MUTED))
+                            .child("reverse: not supported by the engine"),
                     )
                     .into_any_element(),
             );
@@ -371,7 +361,7 @@ fn pill_trigger_direction(
     macro_id: String,
     workspace: Entity<Workspace>,
 ) -> Stateful<Div> {
-    let selected = t.hid_code == code && t.page == 1;
+    let selected = t.hid_code == code && t.page == crate::keymenu::KEY_PAGE;
     let display = if selected {
         crate::schema::key_name(t.page, t.hid_code, &crate::schema::keymap_cached())
     } else {
@@ -381,7 +371,7 @@ fn pill_trigger_direction(
         workspace.update(cx, |ws, cx| {
             ws.set_trigger(&macro_id, |tr| {
                 tr.hid_code = code;
-                tr.page = 1;
+                tr.page = crate::keymenu::KEY_PAGE;
                 tr.trigger_type = 2;
             });
             cx.notify();
