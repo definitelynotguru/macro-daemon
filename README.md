@@ -1,7 +1,12 @@
 # macro-daemon
 
+<!-- SCREENSHOT-SLOT-HERO: app/screenshots/editor.png, committed from the GPUI thread before merge.
+
+![The macro-daemon editor](app/screenshots/editor.png)
+-->
+
 A vendor-neutral macro daemon for Linux. It replays the macro *semantics* recovered from a
-commercial peripheral suite — event schema, pacing model, repeat rules, key-code space — on top of
+commercial peripheral suite (event schema, pacing model, repeat rules, key-code space) on top of
 `evdev` (triggers) and `uinput` (injection).
 
 The original engine is onboard-only: every "play" ends in a firmware deploy, and the shipped
@@ -9,9 +14,21 @@ product contains no input-injection API at all (see `MACRO_SPEC.md` §B.5). So t
 of their runtime. It is a reimplementation of their data model and timing, with the device
 replaced by a virtual one. Details of that decision are in [DESIGN.md](DESIGN.md).
 
----
+## Features
 
-## Build
+- **Recovered pacing.** Timestamp offsets and `type:4` delay events replay exactly as recorded.
+  `jitter_ms` exists because a user may want it and ships at 0, since the recovered format has no
+  jitter field and adding randomness makes replay less faithful.
+- **Per-app profiles.** Profile selection follows the focused window's executable path, never a
+  window title. Focus comes from `hyprctl`, `swaymsg`, `xdotool`, or `xprop`, tried in that order.
+- **Hot-reload.** `SIGHUP` re-reads the profiles directory and swaps it in atomically. A parse
+  error logs and keeps the previous set; the daemon never dies on a bad edit.
+- **Self-exclusion.** The daemon's own virtual device is excluded from trigger discovery, so a
+  macro that emits its own trigger key cannot retrigger itself.
+- **Tested without hardware.** 55 tests run with no root and no input devices, so CI runs the
+  suite anywhere.
+
+## Build and install
 
 ```bash
 cargo build --release          # target/release/macro-daemon (and macro-studio)
@@ -24,27 +41,35 @@ needs `libxkbcommon`, `fontconfig`, and Vulkan (or `libgl1-mesa-dri`) at run tim
 `libudev-dev`, `libxkbcommon-dev`, `libfontconfig1-dev`, `libasound2-dev`, `libvulkan-dev`,
 `cmake`, `clang`, `protobuf-compiler` to build. No network calls at build or run time.
 
-## Install
+The daemon needs write on `/dev/uinput` and read on `/dev/input/event*`:
 
 ```bash
 # 1. uinput module
 sudo modprobe uinput
 echo uinput | sudo tee /etc/modules-load.d/uinput.conf    # persist
 
-# 2. permissions: the daemon needs write on /dev/uinput and read on /dev/input/event*
+# 2. permissions
 sudo usermod -aG input "$USER"                            # then log out and back in
 sudo install -m 644 packaging/60-macro-daemon.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-If `/dev/uinput` is missing or unwritable the daemon says exactly that and names the fix — it
-does not panic:
+If `/dev/uinput` is missing or unwritable the daemon says exactly that and names the fix; it does
+not panic:
 
 ```
 Error: /dev/uinput does not exist.
   Load the module:        sudo modprobe uinput
   ...
 ```
+
+## UI tour
+
+The GPUI editor gives the daemon a graphical front end. Screenshots land here as the UI takes
+shape.
+
+<!-- SCREENSHOT-SLOT: app/screenshots/bindings.png — bindings view -->
+<!-- SCREENSHOT-SLOT: app/screenshots/trace.png — timed trace view -->
 
 ## Run
 
@@ -57,11 +82,9 @@ macro-daemon --trace default:m-f5x2   # timed trace of one macro, exits
 macro-daemon --dry-run             # real triggers, logged injections, no /dev/uinput writes
 ```
 
-`SIGHUP` re-reads the profiles directory and swaps it in atomically; a parse error logs and keeps
-the previous set (the daemon never dies on a bad edit). `SIGINT`/`SIGTERM` shut down cleanly.
-
-Optional hotkey in `daemon.json` (`"toggle_hotkey": "KEY_F11"`) suspends/resumes the daemon
-without stopping it; the event is swallowed and never reaches the macro engine.
+`SIGINT`/`SIGTERM` shut down cleanly. Optional hotkey in `daemon.json`
+(`"toggle_hotkey": "KEY_F11"`) suspends/resumes the daemon without stopping it; the event is
+swallowed and never reaches the macro engine.
 
 ## Configuration
 
@@ -155,14 +178,15 @@ Field names are the recovered ones, so a config can be diffed against real engin
 ```
 
 `apps` entries are matched against the focused process's executable path (exact, or basename
-equality) — never a window title, which is what the original does (`applications.path`,
-`MACRO_SPEC.md` §D.4). Focus comes from `hyprctl`, `swaymsg`, `xdotool` or `xprop`, tried in that
-order; if none is available the daemon logs once and stays on the current profile.
+equality), never a window title, which is what the original does (`applications.path`,
+`MACRO_SPEC.md` §D.4). If no focus source is available the daemon logs once and stays on the
+current profile.
 
 ### Playback types — the one place to be careful
 
 `playback_options_data.type` on disk uses the **client** numbering; an onboard macro header uses
-the **wire** numbering. They differ by one:
+the **wire** numbering. They differ by one, and mixing them is the obvious silent bug: `type: 1`
+means *play once* in one table and *repeat N times* in the other.
 
 | mode | client (config/DB) | wire (firmware) |
 |---|---|---|
@@ -171,7 +195,7 @@ the **wire** numbering. They differ by one:
 | repeatWhilePressed | 2 | 3 |
 | toggleRepeat | 3 | 4 |
 | toggleHold | 4 | 5 |
-| holdWhilePressed | — (no client slot) | 6 |
+| holdWhilePressed | (no client slot) | 6 |
 
 Both are modelled by one `#[repr(u8)]` enum whose discriminants are the **wire** values, with
 `from_client` / `to_client` / `from_wire` / `to_wire` conversions. Unknown values are hard errors;
@@ -202,6 +226,25 @@ The window is a three-pane SteelSeries-style editor:
 Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file the daemon would
 reject is never written), Reload (re-reads the directory from disk and discards unsaved edits —
 the same semantics as sending the daemon SIGHUP).
+
+## Testing
+
+`cargo test` runs 55 tests across five suites with no root and no devices. The regression suite
+pins the bugs that were found by running the daemon, not by reading the spec:
+
+- `hotkey_is_matched_in_hid_space_not_evdev_space` — the toggle hotkey resolves in HID usage
+  space, like every other key reference.
+- `synthetic_devices_are_recognised_by_name` — `ydotoold`, `wtype`, and the daemon's own virtual
+  device are excluded from autodiscovery, so injected output cannot feed back in as input.
+- `locked_injector_does_not_hold_the_device_across_a_macro` — the device lock releases between
+  macros, so a long macro cannot block the next one.
+- `gate_key_survives_a_profile_switch` — the toggle hotkey still resolves after a profile swap.
+
+The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). It measures the
+wall-clock spacing of `repeatWhilePressed` repeats against the configured `repeat_delay`. Its
+results table is reproduced here once the harness lands.
+
+<!-- SCREENSHOT-SLOT-E2E: results table from docs/e2e-timing.md -->
 
 ## Compatibility table
 
