@@ -1,0 +1,18 @@
+[package]
+name = "macro-studio"
+version = "0.1.0"
+edition = "2021"
+description = "Desktop macro editor for macro-daemon profiles, built with GPUI"
+license = "MIT"
+
+[[bin]]
+name = "macro-studio"
+path = "src/main.rs"
+
+[dependencies]
+macro_daemon = { path = ".." }
+anyhow = "1"
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
+
+[dev-dependencies]
+tempfile = "3"
