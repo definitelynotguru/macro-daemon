@@ -227,6 +227,7 @@ Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file th
 reject is never written), Reload (re-reads the directory from disk and discards unsaved edits —
 the same semantics as sending the daemon SIGHUP).
 
+<<<<<<< HEAD
 ## Testing
 
 `cargo test` runs 55 tests across five suites with no root and no devices. The regression suite
@@ -262,6 +263,8 @@ is exactly what a real device would consume. The container that produced it has 
 so no device-level timing is claimed; the doc shows how to reproduce the device-level probe on a
 machine that has the node.
 
+=======
+>>>>>>> 09fc824 (Document macro-studio in README; deslop pass on app sources)
 ## Compatibility table
 
 Comments in the source cite `MACRO_SPEC.md §X`. That file is the behavioural spec this was written
