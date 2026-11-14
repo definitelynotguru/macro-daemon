@@ -1,3 +1,3 @@
 fn main() {
-    println!("macro-studio scaffold");
+    macro_studio::main_module::main();
 }
