@@ -14,12 +14,15 @@ replaced by a virtual one. Details of that decision are in [DESIGN.md](DESIGN.md
 ## Build
 
 ```bash
-cargo build --release     # target/release/macro-daemon
-cargo test                # 55 tests, no root, no devices required
+cargo build --release          # target/release/macro-daemon (and macro-studio)
+cargo test                     # no root, no devices required
 ```
 
-Rust 1.75+. Dependencies: `evdev`, `uinput`, `serde`/`serde_json`, `clap`, `anyhow`, `tracing`,
-`tracing-subscriber`, `signal-hook`. No network calls at build or run time.
+Rust 1.75+. Daemon dependencies: `evdev`, `uinput`, `serde`/`serde_json`, `clap`, `anyhow`,
+`tracing`, `tracing-subscriber`, `signal-hook`. The `macro-studio` app adds GPUI; on Linux it
+needs `libxkbcommon`, `fontconfig`, and Vulkan (or `libgl1-mesa-dri`) at run time, and
+`libudev-dev`, `libxkbcommon-dev`, `libfontconfig1-dev`, `libasound2-dev`, `libvulkan-dev`,
+`cmake`, `clang`, `protobuf-compiler` to build. No network calls at build or run time.
 
 ## Install
 
@@ -173,6 +176,32 @@ the **wire** numbering. They differ by one:
 Both are modelled by one `#[repr(u8)]` enum whose discriminants are the **wire** values, with
 `from_client` / `to_client` / `from_wire` / `to_wire` conversions. Unknown values are hard errors;
 nothing is coerced. `--validate` prints both numbers per binding so mismatches are visible.
+
+## macro-studio — the GUI editor
+
+`macro-studio` is a GPUI desktop app for editing profiles without hand-editing JSON. It is a
+separate workspace member that talks to this crate: the `macro_daemon` config types are the
+single source of truth, so what it saves is exactly what the daemon reads.
+
+```bash
+cargo build --workspace          # builds macro-daemon and macro-studio
+cargo run -p macro-studio        # opens ./profiles
+cargo run -p macro-studio -- ~/my-profiles
+cargo run -p macro-studio -- --validate profiles   # headless: parse + validate + round-trip
+```
+
+The window is a three-pane SteelSeries-style editor:
+
+- **Left**: profiles, and per profile the macro list with names and trigger keys.
+- **Center**: the selected macro's event timeline — press/release pairs joined visually, delay
+  blocks sized by duration. Click a delay to edit it inline (type an exact value or nudge ±10ms).
+- **Right**: trigger binding, playback type (client numbering: play once / repeat N times /
+  repeat while pressed / toggle repeat / toggle hold), `num_repeat` and `repeat_delay` shown only
+  when the playback type uses them, playback direction, and the profile's per-app rules.
+
+Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file the daemon would
+reject is never written), Reload (re-reads the directory from disk and discards unsaved edits —
+the same semantics as sending the daemon SIGHUP).
 
 ## Compatibility table
 
