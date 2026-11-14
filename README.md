@@ -201,6 +201,7 @@ Both are modelled by one `#[repr(u8)]` enum whose discriminants are the **wire**
 `from_client` / `to_client` / `from_wire` / `to_wire` conversions. Unknown values are hard errors;
 nothing is coerced. `--validate` prints both numbers per binding so mismatches are visible.
 
+<<<<<<< HEAD
 ## macro-studio — the GUI editor
 
 `macro-studio` is a GPUI desktop app for editing profiles without hand-editing JSON. It is a
@@ -227,6 +228,8 @@ Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file th
 reject is never written), Reload (re-reads the directory from disk and discards unsaved edits —
 the same semantics as sending the daemon SIGHUP).
 
+=======
+>>>>>>> 97daf97 (Resolve README merge conflicts from main: keep testing section and screenshot tour)
 ## Testing
 
 `cargo test` runs 55 tests across five suites with no root and no devices. The regression suite
@@ -263,6 +266,41 @@ is exactly what a real device would consume. The container that produced it has 
 so no device-level timing is claimed; the doc shows how to reproduce the device-level probe on a
 machine that has the node.
 
+<<<<<<< HEAD
+=======
+
+## macro-studio — the GUI editor
+
+`macro-studio` is a GPUI desktop app for editing profiles without hand-editing JSON. It is a
+separate workspace member that talks to this crate: the `macro_daemon` config types are the
+single source of truth, so what it saves is exactly what the daemon reads.
+
+```bash
+cargo build --workspace          # builds macro-daemon and macro-studio
+cargo run -p macro-studio        # opens ./profiles
+cargo run -p macro-studio -- ~/my-profiles
+cargo run -p macro-studio -- --validate profiles   # headless: parse + validate + round-trip
+```
+
+The window is a three-pane editor:
+
+![Profiles and macros on the left, trigger and playback properties on the right.](app/screenshots/main-window.png)
+
+- **Left**: profiles, and per profile the macro list with names and trigger keys.
+- **Center**: the selected macro's event timeline; press/release pairs joined visually, delay
+  blocks sized by duration. Click a delay to edit it inline (type an exact value or nudge ±10ms).
+- **Right**: trigger binding, playback type, `num_repeat` and `repeat_delay` shown only when the
+  playback type uses them, playback direction, and the profile's per-app rules.
+
+A macro selected in the timeline, with its properties pane:
+
+![The save-all macro with its trigger, playback, and per-app rule properties.](app/screenshots/properties.png)
+
+Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file the daemon would
+reject is never written), Reload (re-reads the directory from disk and discards unsaved edits, the
+same semantics as sending the daemon SIGHUP).
+
+>>>>>>> 97daf97 (Resolve README merge conflicts from main: keep testing section and screenshot tour)
 ## Compatibility table
 
 Comments in the source cite `MACRO_SPEC.md §X`. That file is the behavioural spec this was written
