@@ -1,9 +1,6 @@
 # macro-daemon
 
-<!-- SCREENSHOT-SLOT-HERO: app/screenshots/editor.png, committed from the GPUI thread before merge.
-
-![The macro-daemon editor](app/screenshots/editor.png)
--->
+![macro-studio, the GPUI profile editor: macro list, event timeline, and playback properties.](app/screenshots/main-window.png)
 
 A vendor-neutral macro daemon for Linux. It replays the macro *semantics* recovered from a
 commercial peripheral suite (event schema, pacing model, repeat rules, key-code space) on top of
@@ -65,11 +62,8 @@ Error: /dev/uinput does not exist.
 
 ## UI tour
 
-The GPUI editor gives the daemon a graphical front end. Screenshots land here as the UI takes
-shape.
-
-<!-- SCREENSHOT-SLOT: app/screenshots/bindings.png — bindings view -->
-<!-- SCREENSHOT-SLOT: app/screenshots/trace.png — timed trace view -->
+The GPUI editor, macro-studio, gives the daemon a graphical front end. Its tour with screenshots
+is in [macro-studio — the GUI editor](#macro-studio--the-gui-editor) below.
 
 ## Run
 
@@ -201,74 +195,6 @@ Both are modelled by one `#[repr(u8)]` enum whose discriminants are the **wire**
 `from_client` / `to_client` / `from_wire` / `to_wire` conversions. Unknown values are hard errors;
 nothing is coerced. `--validate` prints both numbers per binding so mismatches are visible.
 
-<<<<<<< HEAD
-## macro-studio — the GUI editor
-
-`macro-studio` is a GPUI desktop app for editing profiles without hand-editing JSON. It is a
-separate workspace member that talks to this crate: the `macro_daemon` config types are the
-single source of truth, so what it saves is exactly what the daemon reads.
-
-```bash
-cargo build --workspace          # builds macro-daemon and macro-studio
-cargo run -p macro-studio        # opens ./profiles
-cargo run -p macro-studio -- ~/my-profiles
-cargo run -p macro-studio -- --validate profiles   # headless: parse + validate + round-trip
-```
-
-The window is a three-pane SteelSeries-style editor:
-
-- **Left**: profiles, and per profile the macro list with names and trigger keys.
-- **Center**: the selected macro's event timeline — press/release pairs joined visually, delay
-  blocks sized by duration. Click a delay to edit it inline (type an exact value or nudge ±10ms).
-- **Right**: trigger binding, playback type (client numbering: play once / repeat N times /
-  repeat while pressed / toggle repeat / toggle hold), `num_repeat` and `repeat_delay` shown only
-  when the playback type uses them, playback direction, and the profile's per-app rules.
-
-Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file the daemon would
-reject is never written), Reload (re-reads the directory from disk and discards unsaved edits —
-the same semantics as sending the daemon SIGHUP).
-
-=======
->>>>>>> 97daf97 (Resolve README merge conflicts from main: keep testing section and screenshot tour)
-## Testing
-
-`cargo test` runs 55 tests across five suites with no root and no devices. The regression suite
-pins the bugs that were found by running the daemon, not by reading the spec:
-
-- `hotkey_is_matched_in_hid_space_not_evdev_space` — the toggle hotkey resolves in HID usage
-  space, like every other key reference.
-- `synthetic_devices_are_recognised_by_name` — `ydotoold`, `wtype`, and the daemon's own virtual
-  device are excluded from autodiscovery, so injected output cannot feed back in as input.
-- `locked_injector_does_not_hold_the_device_across_a_macro` — the device lock releases between
-  macros, so a long macro cannot block the next one.
-- `gate_key_survives_a_profile_switch` — the toggle hotkey still resolves after a profile swap.
-
-The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). The harness
-authors a macro of press, 400 ms delay, release, plays it through the real `Runner::execute` path,
-and measures the wall-clock gap between the press and the release at the injection boundary. The
-harness package carries 9 more tests and the studio 16; `cargo test --workspace` runs all 80:
-
-
-```
-cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30
-
-      stat     hold_ms
-       min     400.085
-    median     400.095
-       p95     400.151
-       max     400.153
-
-pass: yes (|median - 400| = 0.095 ms)
-```
-
-This is an engine-level result, measured with `MockInjector` behind a timestamping wrapper, which
-is exactly what a real device would consume. The container that produced it has no `/dev/uinput`,
-so no device-level timing is claimed; the doc shows how to reproduce the device-level probe on a
-machine that has the node.
-
-<<<<<<< HEAD
-=======
-
 ## macro-studio — the GUI editor
 
 `macro-studio` is a GPUI desktop app for editing profiles without hand-editing JSON. It is a
@@ -300,7 +226,41 @@ Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file th
 reject is never written), Reload (re-reads the directory from disk and discards unsaved edits, the
 same semantics as sending the daemon SIGHUP).
 
->>>>>>> 97daf97 (Resolve README merge conflicts from main: keep testing section and screenshot tour)
+## Testing
+
+`cargo test` runs 55 tests across five suites with no root and no devices. The regression suite
+pins the bugs that were found by running the daemon, not by reading the spec:
+
+- `hotkey_is_matched_in_hid_space_not_evdev_space` — the toggle hotkey resolves in HID usage
+  space, like every other key reference.
+- `synthetic_devices_are_recognised_by_name` — `ydotoold`, `wtype`, and the daemon's own virtual
+  device are excluded from autodiscovery, so injected output cannot feed back in as input.
+- `locked_injector_does_not_hold_the_device_across_a_macro` — the device lock releases between
+  macros, so a long macro cannot block the next one.
+- `gate_key_survives_a_profile_switch` — the toggle hotkey still resolves after a profile swap.
+
+The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). The harness
+authors a macro of press, 400 ms delay, release, plays it through the real `Runner::execute` path,
+and measures the wall-clock gap between the press and the release at the injection boundary. The
+harness package carries 9 more tests and the studio 16; `cargo test --workspace` runs all 80:
+
+```
+cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30
+
+      stat     hold_ms
+       min     400.075
+    median     400.097
+       p95     400.153
+       max     400.158
+
+pass: yes (|median - 400| = 0.097 ms)
+```
+
+This is an engine-level result, measured with `MockInjector` behind a timestamping wrapper, which
+is exactly what a real device would consume. The container that produced it has no `/dev/uinput`,
+so no device-level timing is claimed; the doc shows how to reproduce the device-level probe on a
+machine that has the node.
+
 ## Compatibility table
 
 Comments in the source cite `MACRO_SPEC.md §X`. That file is the behavioural spec this was written
