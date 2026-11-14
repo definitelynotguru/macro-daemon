@@ -63,8 +63,14 @@ fn hold_ms_of(clocked: &TimestampingInjector) -> Option<f64> {
     let mut release = None;
     for (i, ev) in clocked.mock_events().iter().enumerate() {
         match ev {
-            MockEvent::Key { code: 30, pressed: true } => press = press.or(Some(i)),
-            MockEvent::Key { code: 30, pressed: false } => release = Some(i),
+            MockEvent::Key {
+                code: 30,
+                pressed: true,
+            } => press = press.or(Some(i)),
+            MockEvent::Key {
+                code: 30,
+                pressed: false,
+            } => release = Some(i),
             _ => {}
         }
     }
@@ -76,16 +82,25 @@ fn hold_ms_of(clocked: &TimestampingInjector) -> Option<f64> {
     Some(release_t.duration_since(press_t).as_secs_f64() * 1000.0)
 }
 
-fn describe_device() -> bool {
+fn describe_device(json: bool) -> bool {
     let path = std::path::Path::new("/dev/uinput");
     if !path.exists() {
-        println!("device preflight: /dev/uinput does not exist on this machine");
-        println!("engine level still runs below; device level needs the real node");
+        // Human modes get the plain one-liner; json mode keeps stdout to the one object.
+        if json {
+            eprintln!("device preflight: /dev/uinput does not exist on this machine");
+        } else {
+            println!("device preflight: /dev/uinput does not exist on this machine");
+            println!("engine level still runs below; device level needs the real node");
+        }
         return false;
     }
-    match std::fs::OpenOptions::new().write(true).open(path) {
-        Ok(_) => println!("device preflight: /dev/uinput present and writable"),
-        Err(e) => println!("device preflight: /dev/uinput present but not writable ({e})"),
+    let writable = std::fs::OpenOptions::new().write(true).open(path).is_ok();
+    if json {
+        eprintln!("device preflight: /dev/uinput present, writable: {writable}");
+    } else if writable {
+        println!("device preflight: /dev/uinput present and writable");
+    } else {
+        println!("device preflight: /dev/uinput present but not writable");
     }
     true
 }
@@ -108,7 +123,10 @@ fn device_level(hold_ms: u32) -> Result<()> {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "macro-e2e", about = "Hold-timing proof harness for macro_daemon")]
+#[command(
+    name = "macro-e2e",
+    about = "Hold-timing proof harness for macro_daemon"
+)]
 struct Cli {
     /// Hold duration the authored macro carries, in milliseconds.
     #[arg(long, default_value_t = 400)]
@@ -132,7 +150,7 @@ fn main() -> Result<()> {
     let target = f64::from(cli.hold_ms);
     let tolerance = 10.0;
 
-    let device_available = describe_device();
+    let device_available = describe_device(cli.json);
     if cli.device {
         if device_available {
             device_level(cli.hold_ms)?;

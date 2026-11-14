@@ -24,7 +24,7 @@ impl Stats {
         } else {
             (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
         };
-        let rank = ((95 * n + 99) / 100).max(1); // ceil(0.95*n), 1-based, clamped for n=1
+        let rank = (95 * n).div_ceil(100).max(1); // nearest-rank: ceil(0.95*n), 1-based
         Self {
             min: sorted[0],
             median,
