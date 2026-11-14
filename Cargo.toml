@@ -1,5 +1,5 @@
 [workspace]
-members = ["e2e"]
+members = [".", "e2e", "app"]
 resolver = "2"
 
 [package]
@@ -16,10 +16,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "macro-daemon"
 path = "src/main.rs"
-
-[workspace]
-members = [".", "app"]
-resolver = "2"
 
 [dependencies]
 anyhow = "1"

@@ -1,7 +1,9 @@
 # macro-daemon
 
+![macro-studio, the GPUI profile editor: macro list, event timeline, and playback properties.](app/screenshots/main-window.png)
+
 A vendor-neutral macro daemon for Linux. It replays the macro *semantics* recovered from a
-commercial peripheral suite — event schema, pacing model, repeat rules, key-code space — on top of
+commercial peripheral suite (event schema, pacing model, repeat rules, key-code space) on top of
 `evdev` (triggers) and `uinput` (injection).
 
 The original engine is onboard-only: every "play" ends in a firmware deploy, and the shipped
@@ -9,42 +11,59 @@ product contains no input-injection API at all (see `MACRO_SPEC.md` §B.5). So t
 of their runtime. It is a reimplementation of their data model and timing, with the device
 replaced by a virtual one. Details of that decision are in [DESIGN.md](DESIGN.md).
 
----
+## Features
 
-## Build
+- **Recovered pacing.** Timestamp offsets and `type:4` delay events replay exactly as recorded.
+  `jitter_ms` exists because a user may want it and ships at 0, since the recovered format has no
+  jitter field and adding randomness makes replay less faithful.
+- **Per-app profiles.** Profile selection follows the focused window's executable path, never a
+  window title. Focus comes from `hyprctl`, `swaymsg`, `xdotool`, or `xprop`, tried in that order.
+- **Hot-reload.** `SIGHUP` re-reads the profiles directory and swaps it in atomically. A parse
+  error logs and keeps the previous set; the daemon never dies on a bad edit.
+- **Self-exclusion.** The daemon's own virtual device is excluded from trigger discovery, so a
+  macro that emits its own trigger key cannot retrigger itself.
+- **Tested without hardware.** 55 daemon tests run with no root and no input devices, so CI runs
+  the suite anywhere. `cargo test --workspace` runs all 80.
+
+## Build and install
 
 ```bash
 cargo build --release          # target/release/macro-daemon (and macro-studio)
-cargo test                     # no root, no devices required
+cargo test                     # 55 daemon tests, no root, no devices required
 ```
 
 Rust 1.75+. Daemon dependencies: `evdev`, `uinput`, `serde`/`serde_json`, `clap`, `anyhow`,
 `tracing`, `tracing-subscriber`, `signal-hook`. The `macro-studio` app adds GPUI; on Linux it
 needs `libxkbcommon`, `fontconfig`, and Vulkan (or `libgl1-mesa-dri`) at run time, and
-`libudev-dev`, `libxkbcommon-dev`, `libfontconfig1-dev`, `libasound2-dev`, `libvulkan-dev`,
-`cmake`, `clang`, `protobuf-compiler` to build. No network calls at build or run time.
+`libudev-dev`, `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libxcb1-dev`, `libfontconfig1-dev`,
+`libasound2-dev`, `libvulkan-dev`, `cmake`, `clang`, `protobuf-compiler` to build. No network calls at build or run time.
 
-## Install
+The daemon needs write on `/dev/uinput` and read on `/dev/input/event*`:
 
 ```bash
 # 1. uinput module
 sudo modprobe uinput
 echo uinput | sudo tee /etc/modules-load.d/uinput.conf    # persist
 
-# 2. permissions: the daemon needs write on /dev/uinput and read on /dev/input/event*
+# 2. permissions
 sudo usermod -aG input "$USER"                            # then log out and back in
 sudo install -m 644 packaging/60-macro-daemon.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-If `/dev/uinput` is missing or unwritable the daemon says exactly that and names the fix — it
-does not panic:
+If `/dev/uinput` is missing or unwritable the daemon says exactly that and names the fix; it does
+not panic:
 
 ```
 Error: /dev/uinput does not exist.
   Load the module:        sudo modprobe uinput
   ...
 ```
+
+## UI tour
+
+The GPUI editor, macro-studio, gives the daemon a graphical front end. Its tour with screenshots
+is in [macro-studio — the GUI editor](#macro-studio--the-gui-editor) below.
 
 ## Run
 
@@ -57,11 +76,9 @@ macro-daemon --trace default:m-f5x2   # timed trace of one macro, exits
 macro-daemon --dry-run             # real triggers, logged injections, no /dev/uinput writes
 ```
 
-`SIGHUP` re-reads the profiles directory and swaps it in atomically; a parse error logs and keeps
-the previous set (the daemon never dies on a bad edit). `SIGINT`/`SIGTERM` shut down cleanly.
-
-Optional hotkey in `daemon.json` (`"toggle_hotkey": "KEY_F11"`) suspends/resumes the daemon
-without stopping it; the event is swallowed and never reaches the macro engine.
+`SIGINT`/`SIGTERM` shut down cleanly. Optional hotkey in `daemon.json`
+(`"toggle_hotkey": "KEY_F11"`) suspends/resumes the daemon without stopping it; the event is
+swallowed and never reaches the macro engine.
 
 ## Configuration
 
@@ -155,14 +172,15 @@ Field names are the recovered ones, so a config can be diffed against real engin
 ```
 
 `apps` entries are matched against the focused process's executable path (exact, or basename
-equality) — never a window title, which is what the original does (`applications.path`,
-`MACRO_SPEC.md` §D.4). Focus comes from `hyprctl`, `swaymsg`, `xdotool` or `xprop`, tried in that
-order; if none is available the daemon logs once and stays on the current profile.
+equality), never a window title, which is what the original does (`applications.path`,
+`MACRO_SPEC.md` §D.4). If no focus source is available the daemon logs once and stays on the
+current profile.
 
 ### Playback types — the one place to be careful
 
 `playback_options_data.type` on disk uses the **client** numbering; an onboard macro header uses
-the **wire** numbering. They differ by one:
+the **wire** numbering. They differ by one, and mixing them is the obvious silent bug: `type: 1`
+means *play once* in one table and *repeat N times* in the other.
 
 | mode | client (config/DB) | wire (firmware) |
 |---|---|---|
@@ -171,7 +189,7 @@ the **wire** numbering. They differ by one:
 | repeatWhilePressed | 2 | 3 |
 | toggleRepeat | 3 | 4 |
 | toggleHold | 4 | 5 |
-| holdWhilePressed | — (no client slot) | 6 |
+| holdWhilePressed | (no client slot) | 6 |
 
 Both are modelled by one `#[repr(u8)]` enum whose discriminants are the **wire** values, with
 `from_client` / `to_client` / `from_wire` / `to_wire` conversions. Unknown values are hard errors;
@@ -190,18 +208,58 @@ cargo run -p macro-studio -- ~/my-profiles
 cargo run -p macro-studio -- --validate profiles   # headless: parse + validate + round-trip
 ```
 
-The window is a three-pane SteelSeries-style editor:
+The window is a three-pane editor:
+
+![Profiles and macros on the left, trigger and playback properties on the right.](app/screenshots/main-window.png)
 
 - **Left**: profiles, and per profile the macro list with names and trigger keys.
-- **Center**: the selected macro's event timeline — press/release pairs joined visually, delay
+- **Center**: the selected macro's event timeline; press/release pairs joined visually, delay
   blocks sized by duration. Click a delay to edit it inline (type an exact value or nudge ±10ms).
-- **Right**: trigger binding, playback type (client numbering: play once / repeat N times /
-  repeat while pressed / toggle repeat / toggle hold), `num_repeat` and `repeat_delay` shown only
-  when the playback type uses them, playback direction, and the profile's per-app rules.
+- **Right**: trigger binding, playback type, `num_repeat` and `repeat_delay` shown only when the
+  playback type uses them, playback direction, and the profile's per-app rules.
+
+A macro selected in the timeline, with its properties pane:
+
+![The save-all macro with its trigger, playback, and per-app rule properties.](app/screenshots/properties.png)
 
 Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file the daemon would
-reject is never written), Reload (re-reads the directory from disk and discards unsaved edits —
-the same semantics as sending the daemon SIGHUP).
+reject is never written), Reload (re-reads the directory from disk and discards unsaved edits, the
+same semantics as sending the daemon SIGHUP).
+
+## Testing
+
+`cargo test` runs 55 tests across five suites with no root and no devices. The regression suite
+pins the bugs that were found by running the daemon, not by reading the spec:
+
+- `hotkey_is_matched_in_hid_space_not_evdev_space` — the toggle hotkey resolves in HID usage
+  space, like every other key reference.
+- `synthetic_devices_are_recognised_by_name` — `ydotoold`, `wtype`, and the daemon's own virtual
+  device are excluded from autodiscovery, so injected output cannot feed back in as input.
+- `locked_injector_does_not_hold_the_device_across_a_macro` — the device lock releases between
+  macros, so a long macro cannot block the next one.
+- `gate_key_survives_a_profile_switch` — the toggle hotkey still resolves after a profile swap.
+
+The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). The harness
+authors a macro of press, 400 ms delay, release, plays it through the real `Runner::execute` path,
+and measures the wall-clock gap between the press and the release at the injection boundary. The
+harness package carries 9 more tests and the studio 16; `cargo test --workspace` runs all 80:
+
+```
+cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30
+
+      stat     hold_ms
+       min     400.075
+    median     400.097
+       p95     400.153
+       max     400.158
+
+pass: yes (|median - 400| = 0.097 ms)
+```
+
+This is an engine-level result, measured with `MockInjector` behind a timestamping wrapper, which
+is exactly what a real device would consume. The container that produced it has no `/dev/uinput`,
+so no device-level timing is claimed; the doc shows how to reproduce the device-level probe on a
+machine that has the node.
 
 ## Compatibility table
 
