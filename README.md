@@ -240,11 +240,26 @@ pins the bugs that were found by running the daemon, not by reading the spec:
   macros, so a long macro cannot block the next one.
 - `gate_key_survives_a_profile_switch` — the toggle hotkey still resolves after a profile swap.
 
-The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). It measures the
-wall-clock spacing of `repeatWhilePressed` repeats against the configured `repeat_delay`. Its
-results table is reproduced here once the harness lands.
+The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). The harness
+authors a macro of press, 400 ms delay, release, plays it through the real `Runner::execute` path,
+and measures the wall-clock gap between the press and the release at the injection boundary:
 
-<!-- SCREENSHOT-SLOT-E2E: results table from docs/e2e-timing.md -->
+```
+cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30
+
+      stat     hold_ms
+       min     400.085
+    median     400.104
+       p95     400.150
+       max     400.170
+
+pass: yes (|median - 400| = 0.104 ms)
+```
+
+This is an engine-level result, measured with `MockInjector` behind a timestamping wrapper, which
+is exactly what a real device would consume. The container that produced it has no `/dev/uinput`,
+so no device-level timing is claimed; the doc shows how to reproduce the device-level probe on a
+machine that has the node.
 
 ## Compatibility table
 
