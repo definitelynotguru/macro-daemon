@@ -1,7 +1,6 @@
 //! End-to-end hold-timing proof harness.
 
-mod measure;
-mod stats;
+use macro_e2e::stats;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -9,10 +8,10 @@ use clap::Parser;
 use macro_daemon::clock::{FakeWait, RealWait};
 use macro_daemon::config::{Macro, MacroEvent, PlaybackOptions, PlaybackType};
 use macro_daemon::engine::{plan_offsets, Runner};
-use macro_daemon::inject::{MockEvent, MockInjector, UinputInjector};
+use macro_daemon::inject::{MockInjector, UinputInjector};
 use macro_daemon::keymap::Keymap;
 
-use crate::measure::TimestampingInjector;
+use macro_e2e::measure::{hold_ms_of, TimestampingInjector};
 
 /// Author the hold macro exactly as a user would: press A, hold, release.
 ///
@@ -51,35 +50,6 @@ fn run_iteration(hold_ms: u32) -> Result<f64> {
     hold_ms_of(&clocked).with_context(|| {
         "iteration did not produce exactly one press and one release of KEY_A (evdev 30)"
     })
-}
-
-/// Hold duration from the press and release instants of KEY_A (evdev code 30).
-///
-/// The mock log always has exactly one Key press and one Key release per iteration,
-/// at call indices 0 and 2 (press, sync, release); matching by code and direction keeps
-/// that assumption explicit rather than positional.
-fn hold_ms_of(clocked: &TimestampingInjector) -> Option<f64> {
-    let mut press = None;
-    let mut release = None;
-    for (i, ev) in clocked.mock_events().iter().enumerate() {
-        match ev {
-            MockEvent::Key {
-                code: 30,
-                pressed: true,
-            } => press = press.or(Some(i)),
-            MockEvent::Key {
-                code: 30,
-                pressed: false,
-            } => release = Some(i),
-            _ => {}
-        }
-    }
-    let (press, release) = press.zip(release)?;
-    let (press_t, release_t) = (clocked.stamp(press)?, clocked.stamp(release)?);
-    if release_t < press_t {
-        return None;
-    }
-    Some(release_t.duration_since(press_t).as_secs_f64() * 1000.0)
 }
 
 fn describe_device(json: bool) -> bool {

@@ -3,8 +3,10 @@
 use macro_daemon::clock::FakeWait;
 use macro_daemon::config::{MacroEvent, PlaybackOptions, PlaybackType};
 use macro_daemon::engine::{plan_offsets, Runner};
-use macro_daemon::inject::{MockEvent, MockInjector};
+use macro_daemon::inject::{Injector, MockEvent, MockInjector};
 use macro_daemon::keymap::Keymap;
+use macro_e2e::measure::hold_ms_of;
+use macro_e2e::measure::TimestampingInjector;
 
 fn hold_events(hold_ms: u32) -> Vec<MacroEvent> {
     vec![
@@ -81,4 +83,45 @@ fn stats_median_and_p95_match_hand_computed_vector() {
     let forty: Vec<f64> = (0..40).map(f64::from).collect();
     let s = macro_e2e::stats::Stats::new(&forty);
     assert_eq!(s.p95, 37.0);
+}
+
+#[test]
+fn hold_ms_of_pairs_press_and_release_stamps_across_sync() {
+    let mut mock = MockInjector::new();
+    let mut clocked = TimestampingInjector::new(&mut mock);
+    clocked.key(30, true).unwrap();
+    clocked.sync().unwrap();
+    clocked.key(30, false).unwrap();
+    let hold = hold_ms_of(&clocked).expect("press and release both present");
+    assert!(hold >= 0.0, "release must not precede press");
+    // The Sync entry between the two key calls must not shift the pairing.
+    assert_eq!(clocked.mock_events().len(), 3);
+    assert!(matches!(clocked.mock_events()[1], MockEvent::Sync));
+}
+
+#[test]
+fn hold_ms_of_returns_none_without_a_release() {
+    let mut mock = MockInjector::new();
+    let mut clocked = TimestampingInjector::new(&mut mock);
+    clocked.key(30, true).unwrap();
+    assert!(hold_ms_of(&clocked).is_none());
+}
+
+#[test]
+fn hold_ms_of_keeps_first_press_on_duplicate() {
+    let mut mock = MockInjector::new();
+    let mut clocked = TimestampingInjector::new(&mut mock);
+    clocked.key(30, true).unwrap();
+    clocked.sync().unwrap();
+    clocked.key(30, true).unwrap();
+    clocked.key(30, false).unwrap();
+    let hold = hold_ms_of(&clocked).expect("release present");
+    // stamps: 0 first press, 1 sync, 2 duplicate press, 3 release.
+    // Hold must start at the FIRST press, so it strictly exceeds the
+    // duplicate-press-to-release gap that a last-press pairing would report.
+    let from_dup = clocked
+        .stamp(3)
+        .unwrap()
+        .duration_since(clocked.stamp(2).unwrap());
+    assert!(hold > from_dup.as_secs_f64() * 1000.0);
 }

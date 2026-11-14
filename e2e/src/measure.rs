@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use anyhow::Result;
 
-use macro_daemon::inject::{Injector, MockInjector, WheelAxis};
+use macro_daemon::inject::{Injector, MockEvent, MockInjector, WheelAxis};
 
 /// Forwards every call to the inner injector and stamps the wall clock on arrival.
 pub struct TimestampingInjector<'a> {
@@ -58,4 +58,33 @@ impl Injector for TimestampingInjector<'_> {
     fn describe(&self) -> &str {
         "timestamping"
     }
+}
+
+/// Hold duration from the press and release instants of KEY_A (evdev code 30).
+///
+/// The mock log always has exactly one Key press and one Key release per iteration,
+/// at call indices 0 and 2 (press, sync, release); matching by code and direction keeps
+/// that assumption explicit rather than positional.
+pub fn hold_ms_of(clocked: &TimestampingInjector) -> Option<f64> {
+    let mut press = None;
+    let mut release = None;
+    for (i, ev) in clocked.mock_events().iter().enumerate() {
+        match ev {
+            MockEvent::Key {
+                code: 30,
+                pressed: true,
+            } => press = press.or(Some(i)),
+            MockEvent::Key {
+                code: 30,
+                pressed: false,
+            } => release = Some(i),
+            _ => {}
+        }
+    }
+    let (press, release) = press.zip(release)?;
+    let (press_t, release_t) = (clocked.stamp(press)?, clocked.stamp(release)?);
+    if release_t < press_t {
+        return None;
+    }
+    Some(release_t.duration_since(press_t).as_secs_f64() * 1000.0)
 }
