@@ -47,6 +47,12 @@ Pass condition: the median hold stays within 10 ms of the target
 (`|median - 400| <= 10`). The `pass` JSON field and the table both carry it.
 Add `--device` to also run a device-level probe; the probe needs a real
 `/dev/uinput` and is skipped with a one-line note when the node is absent.
+`--json` keeps stdout to one JSON object in every mode; device and preflight
+messages go to stderr.
+
+The device probe announces itself, waits 5 s, then plays `--iters` hold macros
+through the live virtual device, so a reader attached in that window captures
+every press and release.
 
 ## Results from this run
 
@@ -127,8 +133,9 @@ Run these on a Linux machine where you have sudo:
    cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30 --device
    ```
 
-4. Verify the timing at the device level in a second terminal. Find the virtual
-   device and record its events while the probe runs.
+4. Verify the timing at the device level in a second terminal. Start the reader
+   first: the probe waits 5 s after announcing itself, so attach the reader in
+   that window.
 
    ```
    sudo apt install evtest
