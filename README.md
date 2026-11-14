@@ -248,12 +248,12 @@ and measures the wall-clock gap between the press and the release at the injecti
 cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30
 
       stat     hold_ms
-       min     400.085
-    median     400.104
-       p95     400.150
-       max     400.170
+       min     400.086
+    median     400.099
+       p95     400.146
+       max     400.149
 
-pass: yes (|median - 400| = 0.104 ms)
+pass: yes (|median - 400| = 0.099 ms)
 ```
 
 This is an engine-level result, measured with `MockInjector` behind a timestamping wrapper, which
