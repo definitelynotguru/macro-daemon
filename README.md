@@ -25,21 +25,21 @@ replaced by a virtual one. Details of that decision are in [DESIGN.md](DESIGN.md
   error logs and keeps the previous set; the daemon never dies on a bad edit.
 - **Self-exclusion.** The daemon's own virtual device is excluded from trigger discovery, so a
   macro that emits its own trigger key cannot retrigger itself.
-- **Tested without hardware.** 55 tests run with no root and no input devices, so CI runs the
-  suite anywhere.
+- **Tested without hardware.** 55 daemon tests run with no root and no input devices, so CI runs
+  the suite anywhere. `cargo test --workspace` runs all 80.
 
 ## Build and install
 
 ```bash
 cargo build --release          # target/release/macro-daemon (and macro-studio)
-cargo test                     # no root, no devices required
+cargo test                     # 55 daemon tests, no root, no devices required
 ```
 
 Rust 1.75+. Daemon dependencies: `evdev`, `uinput`, `serde`/`serde_json`, `clap`, `anyhow`,
 `tracing`, `tracing-subscriber`, `signal-hook`. The `macro-studio` app adds GPUI; on Linux it
 needs `libxkbcommon`, `fontconfig`, and Vulkan (or `libgl1-mesa-dri`) at run time, and
-`libudev-dev`, `libxkbcommon-dev`, `libfontconfig1-dev`, `libasound2-dev`, `libvulkan-dev`,
-`cmake`, `clang`, `protobuf-compiler` to build. No network calls at build or run time.
+`libudev-dev`, `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libxcb1-dev`, `libfontconfig1-dev`,
+`libasound2-dev`, `libvulkan-dev`, `cmake`, `clang`, `protobuf-compiler` to build. No network calls at build or run time.
 
 The daemon needs write on `/dev/uinput` and read on `/dev/input/event*`:
 
@@ -227,7 +227,6 @@ Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file th
 reject is never written), Reload (re-reads the directory from disk and discards unsaved edits —
 the same semantics as sending the daemon SIGHUP).
 
-<<<<<<< HEAD
 ## Testing
 
 `cargo test` runs 55 tests across five suites with no root and no devices. The regression suite
@@ -243,8 +242,9 @@ pins the bugs that were found by running the daemon, not by reading the spec:
 
 The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). The harness
 authors a macro of press, 400 ms delay, release, plays it through the real `Runner::execute` path,
-and measures the wall-clock gap between the press and the release at the injection boundary. Its
-own package carries 9 more tests; `cargo test --workspace` runs all 64:
+and measures the wall-clock gap between the press and the release at the injection boundary. The
+harness package carries 9 more tests and the studio 16; `cargo test --workspace` runs all 80:
+
 
 ```
 cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30
@@ -263,8 +263,6 @@ is exactly what a real device would consume. The container that produced it has 
 so no device-level timing is claimed; the doc shows how to reproduce the device-level probe on a
 machine that has the node.
 
-=======
->>>>>>> 09fc824 (Document macro-studio in README; deslop pass on app sources)
 ## Compatibility table
 
 Comments in the source cite `MACRO_SPEC.md §X`. That file is the behavioural spec this was written
