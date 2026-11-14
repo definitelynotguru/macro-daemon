@@ -345,3 +345,86 @@ fn key_choices_match_keymap_names() {
         );
     }
 }
+
+#[test]
+fn no_op_mutations_do_not_mark_dirty() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    write_profile(&dir, "sample.json", &sample_file());
+    let mut ws = Workspace::new();
+    ws.load_dir(&dir);
+    ws.select_profile("sample.json");
+    assert!(!ws.dirty());
+
+    ws.set_playback("missing-macro", |p| p.num_repeat = 9);
+    ws.set_trigger("missing-macro", |t| t.hid_code = 99);
+    ws.update_event("m-1", 99, |e| e.extra_data = 1);
+    ws.update_event("missing-macro", 0, |e| e.extra_data = 1);
+    ws.delete_macro("missing-macro");
+    assert!(
+        !ws.dirty(),
+        "mutations that changed nothing must not flag unsaved"
+    );
+
+    ws.delete_macro("m-1");
+    assert!(ws.dirty(), "deleting a real macro flags unsaved");
+}
+
+#[test]
+fn duplicate_macro_ids_are_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    write_profile(&dir, "sample.json", &sample_file());
+    let mut ws = Workspace::new();
+    ws.load_dir(&dir);
+    ws.select_profile("sample.json");
+
+    ws.new_macro(
+        "m-1".to_string(),
+        macro_studio::schema::default_binding("m-1"),
+    );
+    assert_eq!(
+        ws.open()
+            .unwrap()
+            .file
+            .macros
+            .iter()
+            .filter(|m| m.id == "m-1")
+            .count(),
+        1,
+        "second macro with the same id must be rejected"
+    );
+    assert_eq!(ws.selected_macro.as_deref(), None);
+
+    ws.select_macro("m-1");
+    ws.duplicate_macro("m-1", "m-2".to_string());
+    ws.duplicate_macro("m-1", "m-2".to_string());
+    assert_eq!(
+        ws.open()
+            .unwrap()
+            .file
+            .macros
+            .iter()
+            .filter(|m| m.id == "m-2")
+            .count(),
+        1,
+        "duplicate_macro must reject a colliding new id"
+    );
+    assert!(ws.open().unwrap().file.validate().is_ok());
+}
+
+#[test]
+fn headless_validate_accepts_good_and_rejects_corrupt_profiles() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    write_profile(&dir, "good.json", &sample_file());
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("corrupt.json"), "{not json").unwrap();
+
+    assert!(macro_studio::main_module::validate_one(&dir.join("good.json")).is_ok());
+    assert!(macro_studio::main_module::validate_one(&dir.join("corrupt.json")).is_err());
+    assert_eq!(macro_studio::main_module::run_validate(&dir), 1);
+
+    std::fs::remove_file(dir.join("corrupt.json")).unwrap();
+    assert_eq!(macro_studio::main_module::run_validate(&dir), 0);
+}

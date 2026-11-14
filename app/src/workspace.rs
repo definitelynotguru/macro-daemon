@@ -188,6 +188,9 @@ impl Workspace {
         let Some(doc) = self.open_mut() else {
             return;
         };
+        if doc.file.macros.iter().any(|m| m.id == id) {
+            return;
+        }
         doc.dirty = true;
         doc.file.macros.push(macro_daemon::config::Macro {
             id: id.clone(),
@@ -208,6 +211,9 @@ impl Workspace {
         let Some(doc) = self.open_mut() else {
             return;
         };
+        if doc.file.macros.iter().any(|m| m.id == new_id) {
+            return;
+        }
         let Some(source) = doc
             .file
             .macros
@@ -239,11 +245,14 @@ impl Workspace {
 
     pub fn delete_macro(&mut self, id: &str) {
         if let Some(doc) = self.open_mut() {
+            let before = doc.file.macros.len() + doc.file.bindings.len();
             doc.file.macros.retain(|m| m.id != id);
             doc.file
                 .bindings
                 .retain(|b| b.macro_id.as_deref() != Some(id));
-            doc.dirty = true;
+            if before != doc.file.macros.len() + doc.file.bindings.len() {
+                doc.dirty = true;
+            }
         }
         if self.selected_macro.as_deref() == Some(id) {
             self.clear_selection();
