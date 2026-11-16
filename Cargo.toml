@@ -17,6 +17,10 @@ path = "src/lib.rs"
 name = "macro-daemon"
 path = "src/main.rs"
 
+[[bin]]
+name = "macro-mcp"
+path = "mcp/main.rs"
+
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

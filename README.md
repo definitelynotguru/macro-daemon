@@ -79,6 +79,21 @@ macro-daemon --dry-run             # real triggers, logged injections, no /dev/u
 (`"toggle_hotkey": "KEY_F11"`) suspends/resumes the daemon without stopping it; the event is
 swallowed and never reaches the macro engine.
 
+## MCP
+
+`macro-mcp` is a stdio MCP server. An agent can resolve a key name, write a hold timing, and
+validate the profile through the daemon's existing types. It does not inject keys and it does
+not rewrite the daemon.
+
+Capy runs a literal command and arguments, with no shell. From the repo root, the command is:
+
+```
+target/release/macro-mcp
+```
+
+The tools are `resolve_key`, `bind_hold`, `validate`, and `hold_proof`. `hold_proof` reports
+an engine-level hold. It does not open `/dev/uinput`.
+
 ## Configuration
 
 Two layers: a daemon config and a directory of profiles.
