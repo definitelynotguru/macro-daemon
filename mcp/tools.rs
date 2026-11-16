@@ -127,6 +127,16 @@ pub fn bind_hold(args: BindHold) -> Result<Value> {
             .with_context(|| format!("creating {}", parent.display()))?;
     }
 
+    let written = with_profile_lock(&path, || write_hold(&path, &args, &trigger, &hold))?;
+    Ok(written)
+}
+
+fn write_hold(
+    path: &Path,
+    args: &BindHold,
+    trigger: &ResolvedKey,
+    hold: &ResolvedKey,
+) -> Result<Value> {
     let mut file = if path.exists() {
         let text = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
@@ -231,20 +241,86 @@ fn profile_path(dir: &Path, name: &str) -> Result<PathBuf> {
     Ok(dir.join(format!("{name}.json")))
 }
 
+fn with_profile_lock<T>(path: &Path, body: impl FnOnce() -> Result<T>) -> Result<T> {
+    let lock_path = path.with_file_name(format!(".{}.lock", file_label(path)));
+    let started = std::time::Instant::now();
+    loop {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(file) => {
+                let result = body();
+                drop(file);
+                let _ = std::fs::remove_file(&lock_path);
+                return result;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                if lock_is_stale(&lock_path) {
+                    let _ = std::fs::remove_file(&lock_path);
+                    continue;
+                }
+                if started.elapsed() > std::time::Duration::from_secs(5) {
+                    bail!("timed out waiting for {}", lock_path.display());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(err) => {
+                return Err(err).with_context(|| format!("locking {}", lock_path.display()));
+            }
+        }
+    }
+}
+
+fn lock_is_stale(path: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    meta.modified()
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_some_and(|age| age > std::time::Duration::from_secs(10))
+}
+
 fn write_profile(path: &Path, file: &ProfileFile) -> Result<()> {
-    let body = serde_json::to_string_pretty(file).context("serializing profile")?;
-    let tmp_name = format!(
-        ".{}.part",
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("profile.json")
+    let body = format!(
+        "{}\n",
+        serde_json::to_string_pretty(file).context("serializing profile")?
     );
-    let tmp = path.with_file_name(tmp_name);
-    std::fs::write(&tmp, format!("{body}\n"))
-        .with_context(|| format!("writing {}", tmp.display()))?;
-    std::fs::rename(&tmp, path)
-        .with_context(|| format!("renaming {} to {}", tmp.display(), path.display()))?;
-    Ok(())
+    let label = file_label(path);
+    for attempt in 1..=8 {
+        let tmp = path.with_file_name(format!(".{label}.{}.{attempt}.part", std::process::id()));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(mut out) => {
+                use std::io::Write;
+                out.write_all(body.as_bytes())
+                    .with_context(|| format!("writing {}", tmp.display()))?;
+                out.sync_all()
+                    .with_context(|| format!("syncing {}", tmp.display()))?;
+                drop(out);
+                std::fs::rename(&tmp, path)
+                    .with_context(|| format!("renaming {} to {}", tmp.display(), path.display()))?;
+                return Ok(());
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(err).with_context(|| format!("creating {}", tmp.display()));
+            }
+        }
+    }
+    bail!("could not create a temporary file for {}", path.display())
+}
+
+fn file_label(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("profile.json")
+        .to_string()
 }
 
 pub fn validate_profiles(dir: &Path) -> Result<Value> {
@@ -472,6 +548,42 @@ mod tests {
         assert_eq!(file.macros[0].events[1].extra_data, 400);
         let report = validate_profiles(dir.path()).unwrap();
         assert_eq!(report["ok"], true);
+    }
+
+    #[test]
+    fn concurrent_binds_keep_both_triggers() {
+        let dir = tempfile::tempdir().unwrap();
+        let left = std::thread::spawn({
+            let profiles_dir = dir.path().to_path_buf();
+            move || {
+                bind_hold(BindHold {
+                    profiles_dir,
+                    profile: "sentence".to_string(),
+                    trigger: "Numpad 4".to_string(),
+                    hold_key: "E".to_string(),
+                    hold_ms: 400,
+                })
+            }
+        });
+        let right = std::thread::spawn({
+            let profiles_dir = dir.path().to_path_buf();
+            move || {
+                bind_hold(BindHold {
+                    profiles_dir,
+                    profile: "sentence".to_string(),
+                    trigger: "F".to_string(),
+                    hold_key: "A".to_string(),
+                    hold_ms: 50,
+                })
+            }
+        });
+        left.join().unwrap().unwrap();
+        right.join().unwrap().unwrap();
+        let text = std::fs::read_to_string(dir.path().join("sentence.json")).unwrap();
+        let file: ProfileFile = serde_json::from_str(&text).unwrap();
+        file.validate().unwrap();
+        assert_eq!(file.bindings.len(), 2, "{text}");
+        assert_eq!(file.macros.len(), 2, "{text}");
     }
 
     #[test]

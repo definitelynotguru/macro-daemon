@@ -216,6 +216,44 @@ fn sentence_authors_a_numpad4_hold_of_e_through_stdio() {
     );
 }
 
+#[test]
+fn framed_initialize_gets_a_framed_response() {
+    let bin = env!("CARGO_BIN_EXE_macro-mcp");
+    let mut child = Command::new(bin)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("macro-mcp starts");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let body = r#"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"framed","version":"0"}}}"#;
+    write!(stdin, "Content-Length: {}\r\n\r\n{body}", body.len()).expect("write frame");
+    stdin.flush().expect("flush");
+    drop(stdin);
+    let mut stdout = child.stdout.take().expect("stdout");
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut stdout, &mut bytes).expect("read");
+    let text = String::from_utf8(bytes).expect("utf-8");
+    let header_end = text
+        .find("\r\n\r\n")
+        .unwrap_or_else(|| panic!("framed response expected, got {text:?}"));
+    assert!(
+        text[..header_end].starts_with("Content-Length:"),
+        "{text:?}"
+    );
+    let length: usize = text[..header_end]
+        .trim_start_matches("Content-Length:")
+        .trim()
+        .parse()
+        .expect("length");
+    let payload = &text[header_end + 4..];
+    assert_eq!(payload.len(), length, "{text:?}");
+    let parsed: Value = serde_json::from_str(payload).expect("json body");
+    assert_eq!(parsed["id"], 7);
+    assert_eq!(parsed["result"]["serverInfo"]["name"], "macro-daemon-mcp");
+    let _ = child.wait();
+}
+
 fn load_profile(path: &Path) -> ProfileFile {
     let text = std::fs::read_to_string(path).unwrap();
     serde_json::from_str(&text).unwrap()

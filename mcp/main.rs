@@ -18,14 +18,20 @@ fn serve() -> Result<()> {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     loop {
-        let Some(message) = read_message(&mut reader)? else {
+        let Some((message, wire)) = read_message(&mut reader)? else {
             return Ok(());
         };
-        dispatch(&message);
+        dispatch(&message, wire);
     }
 }
 
-fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>> {
+#[derive(Clone, Copy)]
+enum Wire {
+    Line,
+    Framed,
+}
+
+fn read_message(reader: &mut impl BufRead) -> Result<Option<(Value, Wire)>> {
     let mut line = String::new();
     loop {
         line.clear();
@@ -38,10 +44,10 @@ fn read_message(reader: &mut impl BufRead) -> Result<Option<Value>> {
             continue;
         }
         if trimmed.to_ascii_lowercase().starts_with("content-length:") {
-            return read_framed(reader, trimmed).map(Some);
+            return read_framed(reader, trimmed).map(|message| Some((message, Wire::Framed)));
         }
         match serde_json::from_str(trimmed) {
-            Ok(message) => return Ok(Some(message)),
+            Ok(message) => return Ok(Some((message, Wire::Line))),
             Err(err) => eprintln!("macro-mcp: ignoring invalid JSON: {err}"),
         }
     }
@@ -77,7 +83,7 @@ fn content_length(header: &str) -> Result<usize> {
     value.parse().context("Content-Length")
 }
 
-fn dispatch(message: &Value) {
+fn dispatch(message: &Value, wire: Wire) {
     let method = message.get("method").and_then(Value::as_str).unwrap_or("");
     let Some(id) = message.get("id").cloned() else {
         return;
@@ -96,7 +102,7 @@ fn dispatch(message: &Value) {
         Ok(value) => json!({"jsonrpc": "2.0", "id": id, "result": value}),
         Err(error) => json!({"jsonrpc": "2.0", "id": id, "error": error}),
     };
-    write_message(&response);
+    write_message(&response, wire);
 }
 
 fn initialize(message: &Value) -> Value {
@@ -269,8 +275,16 @@ fn rpc_error(code: i32, message: impl Into<String>) -> Value {
     json!({"code": code, "message": message.into()})
 }
 
-fn write_message(message: &Value) {
+fn write_message(message: &Value, wire: Wire) {
+    let Ok(body) = serde_json::to_string(message) else {
+        return;
+    };
     let mut out = io::stdout().lock();
-    let _ = writeln!(out, "{message}");
-    let _ = out.flush();
+    let wrote = match wire {
+        Wire::Line => writeln!(out, "{body}"),
+        Wire::Framed => write!(out, "Content-Length: {}\r\n\r\n{body}", body.len()),
+    };
+    if wrote.is_ok() {
+        let _ = out.flush();
+    }
 }
