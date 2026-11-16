@@ -48,6 +48,7 @@ pub fn view(ws: &Workspace, _: &mut Cx<Workspace>) -> El {
 }
 
 pub fn select_opening(ws: &mut Workspace) {
+    let error = load_error(ws);
     let entries = ws.entries();
     let pick = entries
         .iter()
@@ -56,6 +57,20 @@ pub fn select_opening(ws: &mut Workspace) {
         .cloned();
     if let Some(entry) = pick {
         ws.select_entry(&entry.file_name, &entry.id);
+    }
+    restore_load_error(ws, error);
+}
+
+fn load_error(ws: &Workspace) -> Option<String> {
+    match &ws.status {
+        Status::Error(text) => Some(text.clone()),
+        _ => None,
+    }
+}
+
+fn restore_load_error(ws: &mut Workspace, error: Option<String>) {
+    if let Some(text) = error {
+        ws.status = Status::Error(text);
     }
 }
 
@@ -199,7 +214,7 @@ fn chip(ws: &Workspace, index: usize, event: &MacroEvent) -> El {
     match event.event_type {
         EventType::Delay => delay_chip(index, event.extra_data),
         EventType::KeyboardKey => {
-            let label = short_key(&key_name(event.page, event.code, &ws.keymap));
+            let label = key_name(event.page, event.code, &ws.keymap);
             key_chip(index, &label, event.extra_data != 0)
         }
         other => {
@@ -247,16 +262,6 @@ fn delay_chip(index: usize, ms: u32) -> El {
         .items_center()
         .child(clock_glyph())
         .child(text(format!("{ms} ms")).font(CHIP).color(Color::WHITE))
-}
-
-fn short_key(name: &str) -> String {
-    if name.len() <= 3 {
-        return name.to_string();
-    }
-    name.split_whitespace()
-        .next_back()
-        .unwrap_or(name)
-        .to_string()
 }
 
 fn connector() -> El {
@@ -393,10 +398,15 @@ fn revert_edits(ws: &mut Workspace) {
     let selected = ws.selected_macro.clone();
     let open = ws.open_profile.clone();
     ws.reload();
+    let error = load_error(ws);
     if let (Some(file_name), Some(id)) = (open, selected) {
         ws.select_entry(&file_name, &id);
     } else {
         select_opening(ws);
+    }
+    if error.is_some() {
+        restore_load_error(ws, error);
+        return;
     }
     ws.status = Status::Info("reverted".to_string());
 }

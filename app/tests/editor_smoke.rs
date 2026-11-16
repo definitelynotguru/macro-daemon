@@ -1,8 +1,24 @@
 use std::path::PathBuf;
 
 use macro_studio::editor::{select_opening, view};
-use macro_studio::workspace::Workspace;
+use macro_studio::workspace::{Status, Workspace};
 use rune::{Env, Runtime};
+
+#[test]
+fn opening_selection_keeps_a_profile_load_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("good.json"), include_str!("../../profiles/default.json")).unwrap();
+    std::fs::write(dir.join("bad.json"), "{not json").unwrap();
+    let mut ws = Workspace::new();
+    ws.load_dir(&dir);
+    select_opening(&mut ws);
+    assert!(
+        matches!(ws.status, Status::Error(_)),
+        "auto-select must not hide a profile that failed to load"
+    );
+}
 
 #[test]
 fn opening_frame_selects_a_macro_and_shows_a_delay_chip() {

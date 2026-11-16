@@ -22,6 +22,9 @@ fn init_state() -> Workspace {
     let mut workspace = Workspace::new();
     workspace.load_dir(&profiles_dir());
     select_opening(&mut workspace);
+    if let crate::workspace::Status::Error(text) = &workspace.status {
+        eprintln!("macro-studio: {text}");
+    }
     workspace
 }
 

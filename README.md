@@ -23,7 +23,7 @@ replaced by a virtual one. Details of that decision are in [DESIGN.md](DESIGN.md
 - **Self-exclusion.** The daemon's own virtual device is excluded from trigger discovery, so a
   macro that emits its own trigger key cannot retrigger itself.
 - **Tested without hardware.** 55 daemon tests run with no root and no input devices, so CI runs
-  the suite anywhere. `cargo test --workspace` runs all 82.
+  the suite anywhere. `cargo test --workspace` runs all 83.
 
 ## Build and install
 
@@ -237,7 +237,7 @@ pins the bugs that were found by running the daemon, not by reading the spec:
 The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). The harness
 authors a macro of press, 400 ms delay, release, plays it through the real `Runner::execute` path,
 and measures the wall-clock gap between the press and the release at the injection boundary. The
-harness package carries 9 more tests and the studio 18; `cargo test --workspace` runs all 82:
+harness package carries 9 more tests and the studio 19; `cargo test --workspace` runs all 83:
 
 ```
 cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30
