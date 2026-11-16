@@ -1,6 +1,6 @@
 # macro-daemon
 
-![macro-studio, the GPUI profile editor: macro list, event timeline, and playback properties.](app/screenshots/main-window.png)
+![Macro Editor: macro list, event chips, and the save bar.](app/screenshots/main-window.png)
 
 A vendor-neutral macro daemon for Linux. It replays the macro *semantics* recovered from a
 commercial peripheral suite (event schema, pacing model, repeat rules, key-code space) on top of
@@ -23,7 +23,7 @@ replaced by a virtual one. Details of that decision are in [DESIGN.md](DESIGN.md
 - **Self-exclusion.** The daemon's own virtual device is excluded from trigger discovery, so a
   macro that emits its own trigger key cannot retrigger itself.
 - **Tested without hardware.** 55 daemon tests run with no root and no input devices, so CI runs
-  the suite anywhere. `cargo test --workspace` runs all 80.
+  the suite anywhere. `cargo test --workspace` runs all 87.
 
 ## Build and install
 
@@ -33,10 +33,10 @@ cargo test                     # 55 daemon tests, no root, no devices required
 ```
 
 Rust 1.75+. Daemon dependencies: `evdev`, `uinput`, `serde`/`serde_json`, `clap`, `anyhow`,
-`tracing`, `tracing-subscriber`, `signal-hook`. The `macro-studio` app adds GPUI; on Linux it
-needs `libxkbcommon`, `fontconfig`, and Vulkan (or `libgl1-mesa-dri`) at run time, and
-`libudev-dev`, `libxkbcommon-dev`, `libxkbcommon-x11-dev`, `libxcb1-dev`, `libfontconfig1-dev`,
-`libasound2-dev`, `libvulkan-dev`, `cmake`, `clang`, `protobuf-compiler` to build. No network calls at build or run time.
+`tracing`, `tracing-subscriber`, `signal-hook`. The `macro-studio` app adds Rune. A windowed
+run on Linux needs `libxkbcommon-x11-0`. A headless `--snap` run needs a Vulkan driver
+(`mesa-vulkan-drivers`, `VK_ICD_FILENAMES` pointing at lavapipe when the machine has no GPU).
+No network calls at run time. The Rune git pin is fetched at build time.
 
 The daemon needs write on `/dev/uinput` and read on `/dev/input/event*`:
 
@@ -62,8 +62,7 @@ Error: /dev/uinput does not exist.
 
 ## UI tour
 
-The GPUI editor, macro-studio, gives the daemon a graphical front end. Its tour with screenshots
-is in [macro-studio — the GUI editor](#macro-studio--the-gui-editor) below.
+macro-studio is the Rune editor. The tour is in [macro-studio — the GUI editor](#macro-studio--the-gui-editor).
 
 ## Run
 
@@ -197,7 +196,7 @@ nothing is coerced. `--validate` prints both numbers per binding so mismatches a
 
 ## macro-studio — the GUI editor
 
-`macro-studio` is a GPUI desktop app for editing profiles without hand-editing JSON. It is a
+`macro-studio` is a Rune desktop app for editing profiles without hand-editing JSON. It is a
 separate workspace member that talks to this crate: the `macro_daemon` config types are the
 single source of truth, so what it saves is exactly what the daemon reads.
 
@@ -205,26 +204,22 @@ single source of truth, so what it saves is exactly what the daemon reads.
 cargo build --workspace          # builds macro-daemon and macro-studio
 cargo run -p macro-studio        # opens ./profiles
 cargo run -p macro-studio -- ~/my-profiles
-cargo run -p macro-studio -- --validate profiles   # headless: parse + validate + round-trip
+cargo run -p macro-studio -- --validate profiles   # parse + validate + round-trip, then exit
+VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
+  cargo run -p macro-studio --release -- --snap app/screenshots/main-window.png --scene delay profiles
 ```
 
-The window is a three-pane editor:
+The window is the Macro Editor. The title is `Macro Editor`.
 
-![Profiles and macros on the left, trigger and playback properties on the right.](app/screenshots/main-window.png)
+![Macro list on the left, event chips in a strip, save on the right.](app/screenshots/main-window.png)
 
-- **Left**: profiles, and per profile the macro list with names and trigger keys.
-- **Center**: the selected macro's event timeline; press/release pairs joined visually, delay
-  blocks sized by duration. Click a delay to edit it inline (type an exact value or nudge ±10ms).
-- **Right**: trigger binding, playback type, `num_repeat` and `repeat_delay` shown only when the
-  playback type uses them, playback direction, and the profile's per-app rules.
+- **Left**: a MACROS rail. Each row is a radio and a name. The selected row is orange.
+- **Center**: the selected macro's events as chips in one strip. A delay chip shows its milliseconds. The rest of the canvas is empty.
+- **Bottom**: gear (prints the profiles directory), CLEAR, START (plays the selected macro through `MockInjector` and reports the plan), record (does not write events; this build has no keyboard capture), REVERT, SAVE.
 
-A macro selected in the timeline, with its properties pane:
+SAVE validates before writing. A file the daemon would reject is never written. REVERT re-reads the directory and discards unsaved edits, the same semantics as sending the daemon SIGHUP.
 
-![The save-all macro with its trigger, playback, and per-app rule properties.](app/screenshots/properties.png)
-
-Toolbar: New macro, Duplicate, Delete, Save (validates before writing; a file the daemon would
-reject is never written), Reload (re-reads the directory from disk and discards unsaved edits, the
-same semantics as sending the daemon SIGHUP).
+Cold-start numbers for this machine are in [docs/ui-cold-start.md](docs/ui-cold-start.md).
 
 ## Testing
 
@@ -242,7 +237,7 @@ pins the bugs that were found by running the daemon, not by reading the spec:
 The end-to-end hold-timing proof is in [docs/e2e-timing.md](docs/e2e-timing.md). The harness
 authors a macro of press, 400 ms delay, release, plays it through the real `Runner::execute` path,
 and measures the wall-clock gap between the press and the release at the injection boundary. The
-harness package carries 9 more tests and the studio 16; `cargo test --workspace` runs all 80:
+harness package carries 9 more tests and the studio 23; `cargo test --workspace` runs all 87:
 
 ```
 cargo run -p macro-e2e --release -- --hold-ms 400 --iters 30

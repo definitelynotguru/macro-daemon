@@ -16,6 +16,13 @@ pub enum Status {
     Error(String),
 }
 
+#[derive(Clone)]
+pub struct MacroEntry {
+    pub file_name: String,
+    pub id: String,
+    pub name: String,
+}
+
 pub struct Workspace {
     pub keymap: macro_daemon::keymap::Keymap,
     pub dir: PathBuf,
@@ -184,12 +191,12 @@ impl Workspace {
         self.selected_event = None;
     }
 
-    pub fn new_macro(&mut self, id: String, binding: macro_daemon::config::Binding) {
+    pub fn new_macro(&mut self, id: String, binding: macro_daemon::config::Binding) -> bool {
         let Some(doc) = self.open_mut() else {
-            return;
+            return false;
         };
         if doc.file.macros.iter().any(|m| m.id == id) {
-            return;
+            return false;
         }
         doc.dirty = true;
         doc.file.macros.push(macro_daemon::config::Macro {
@@ -205,6 +212,7 @@ impl Workspace {
         self.selected_macro = Some(id);
         self.selected_event = None;
         self.status = Status::Idle;
+        true
     }
 
     pub fn duplicate_macro(&mut self, id: &str, new_id: String) {
@@ -375,6 +383,84 @@ impl Workspace {
 
     pub fn reload(&mut self) {
         self.load_dir(&self.dir.clone());
+    }
+
+    pub fn entries(&self) -> Vec<MacroEntry> {
+        let mut entries = Vec::new();
+        for doc in &self.profiles {
+            for macro_def in &doc.file.macros {
+                if macro_def.is_deleted != 0 {
+                    continue;
+                }
+                entries.push(MacroEntry {
+                    file_name: doc.file_name.clone(),
+                    id: macro_def.id.clone(),
+                    name: macro_def.name.clone(),
+                });
+            }
+        }
+        entries.sort_by(|a, b| {
+            a.name
+                .to_lowercase()
+                .cmp(&b.name.to_lowercase())
+                .then(a.file_name.cmp(&b.file_name))
+                .then(a.id.cmp(&b.id))
+        });
+        entries
+    }
+
+    pub fn select_entry(&mut self, file_name: &str, id: &str) {
+        self.select_profile(file_name);
+        self.select_macro(id);
+    }
+
+    pub fn clear_selected_events(&mut self) {
+        let Some(id) = self.selected_macro.clone() else {
+            self.status = Status::Error("no macro selected".to_string());
+            return;
+        };
+        let Some(doc) = self.open_mut() else {
+            return;
+        };
+        let Some(macro_def) = doc.file.macros.iter_mut().find(|m| m.id == id) else {
+            return;
+        };
+        if macro_def.events.is_empty() {
+            self.status = Status::Info("already clear".to_string());
+            return;
+        }
+        macro_def.events.clear();
+        doc.dirty = true;
+        self.selected_event = None;
+        self.status = Status::Info("cleared events".to_string());
+    }
+
+    pub fn play_selected(&mut self) {
+        let Some(events) = self.selected().map(|m| m.events.clone()) else {
+            self.status = Status::Error("no macro selected".to_string());
+            return;
+        };
+        let name = self
+            .selected()
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| "macro".to_string());
+        let opts = self
+            .selected_binding()
+            .map(|binding| binding.playback_options_data)
+            .unwrap_or_default();
+        let mut injector = macro_daemon::MockInjector::new();
+        let mut wait = macro_daemon::clock::FakeWait::default();
+        let mut runner = macro_daemon::engine::Runner::new(&mut injector, &self.keymap, &mut wait);
+        let mut gate = |_iteration: u32| false;
+        match runner.execute(&events, &opts, &mut gate) {
+            Ok(stats) => {
+                self.status = Status::Info(format!(
+                    "played {name} through MockInjector: {} injected, {} planned ms (engine-level, no device)",
+                    stats.injected, stats.planned_ms
+                ));
+            }
+            Err(err) => self.status = Status::Error(format!("play failed: {err:#}")),
+        }
     }
 }
 

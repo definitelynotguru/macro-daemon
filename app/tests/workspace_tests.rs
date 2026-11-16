@@ -428,3 +428,90 @@ fn headless_validate_accepts_good_and_rejects_corrupt_profiles() {
     std::fs::remove_file(dir.join("corrupt.json")).unwrap();
     assert_eq!(macro_studio::main_module::run_validate(&dir), 0);
 }
+
+#[test]
+fn entries_sort_names_and_skip_deleted_macros() {
+    let mut file = sample_file();
+    file.macros[0].name = "beta".to_string();
+    file.macros.push(Macro {
+        id: "m-gone".to_string(),
+        name: "ALPHA".to_string(),
+        events: Vec::new(),
+        recording_options: None,
+        cloud_last_updated_at: String::new(),
+        is_deleted: 1,
+        is_new: 0,
+    });
+    file.macros.push(Macro {
+        id: "m-alpha".to_string(),
+        name: "ALPHA".to_string(),
+        events: Vec::new(),
+        recording_options: None,
+        cloud_last_updated_at: String::new(),
+        is_deleted: 0,
+        is_new: 0,
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    write_profile(&dir, "z.json", &file);
+    let mut ws = Workspace::new();
+    ws.load_dir(&dir);
+    let names: Vec<_> = ws.entries().into_iter().map(|e| e.name).collect::<Vec<_>>();
+    assert_eq!(names, ["ALPHA", "beta", "wheel"]);
+    assert!(ws.entries().iter().all(|e| e.id != "m-gone"));
+}
+
+#[test]
+fn clear_selected_events_persists_on_save() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    write_profile(&dir, "sample.json", &sample_file());
+    let mut ws = Workspace::new();
+    ws.load_dir(&dir);
+    ws.clear_selected_events();
+    assert!(matches!(ws.status, Status::Error(_)));
+    ws.select_profile("sample.json");
+    ws.select_macro("m-1");
+    ws.clear_selected_events();
+    assert!(ws.selected().unwrap().events.is_empty());
+    assert!(ws.dirty());
+    assert!(ws.selected_event.is_none());
+    assert!(matches!(ws.status, Status::Info(_)));
+    ws.save_open_profile().unwrap();
+    ws.reload();
+    ws.select_profile("sample.json");
+    ws.select_macro("m-1");
+    assert!(ws.selected().unwrap().events.is_empty());
+    ws.clear_selected_events();
+    assert!(matches!(ws.status, Status::Info(_)));
+}
+
+#[test]
+fn validate_rejects_an_empty_or_missing_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let empty = tmp.path().join("empty");
+    std::fs::create_dir_all(&empty).unwrap();
+    assert_eq!(macro_studio::main_module::run_validate(&empty), 1);
+    assert_eq!(
+        macro_studio::main_module::run_validate(&tmp.path().join("missing")),
+        1
+    );
+}
+
+#[test]
+fn start_plays_the_selected_macro_through_mock_injector() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    write_profile(&dir, "sample.json", &sample_file());
+    let mut ws = Workspace::new();
+    ws.load_dir(&dir);
+    ws.select_profile("sample.json");
+    ws.select_macro("m-1");
+    ws.play_selected();
+    let Status::Info(text) = &ws.status else {
+        panic!("expected an engine-level play report, got {:?}", ws.status);
+    };
+    assert!(text.contains("MockInjector"), "{text}");
+    assert!(text.contains("injected"), "{text}");
+    assert!(!text.contains("/dev/uinput"), "{text}");
+}

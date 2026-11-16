@@ -34,8 +34,8 @@ tempfile = "3"
 [profile.release]
 debug = false
 
-# xattr 0.2.3 (pulled by gpui -> gpui_http_client -> zed-async-tar) uses libc::ENOATTR,
-# removed from libc on Linux; 0.2.5 fixes it. Root crate still builds standalone, so the
-# patch is harmless without the app member.
+# Rune's Windows target asks parley_engine 0.12 for `line-dictionaries`.
+# crates.io 0.12.0 does not publish that feature, and Cargo resolves it on Linux too.
+# The patch is the published crate plus an empty feature so the git pin resolves.
 [patch.crates-io]
-xattr = { path = "patches/xattr" }
+parley_engine = { path = "patches/parley_engine" }

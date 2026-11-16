@@ -3,7 +3,7 @@
 ## Why this exists
 
 macro-daemon today only serves people who edit `profiles/*.json` by hand. The goal is a real
-desktop macro editor, in the spirit of SteelSeries GG's macro editor, built with GPUI, that
+desktop macro editor, in the spirit of SteelSeries GG's macro editor, built with Rune, that
 talks to the existing `macro_daemon` library. The smallest change that meets the goal is one
 new workspace member, `app/`, with no changes to the daemon's engine. The library stays the
 single source of truth for the schema: the app never re-parses or re-serializes profile JSON
@@ -45,30 +45,11 @@ No second parser anywhere: load is `serde_json::from_str::<ProfileFile>`, save i
 
 ## Layout
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│ toolbar: New macro · Duplicate · Delete · Record(skip)   Save · Reload │
-├──────────────┬─────────────────────────────────┬───────────────┤
-│ sidebar      │ timeline                        │ properties    │
-│ profiles     │ horizontal strip of event blocks│ trigger       │
-│  └ macros    │ (press/release/delay), delays   │ playback      │
-│              │ editable inline; click to select│ num_repeat    │
-│              │ drag block edges to resize delay│ repeat_delay  │
-│              │ +/- buttons nudge delay ±10ms   │ per-app rules │
-├──────────────┴─────────────────────────────────┴───────────────┤
-│ status bar: saved / errors / dirty marker                      │
-└────────────────────────────────────────────────────────────────┘
-```
+The window title is `Macro Editor`. The view is one function of `Workspace`, not a second model.
 
-- Left sidebar: profiles list, then the open profile's macros with name + trigger key.
-  Click selects. Per profile: a small badge when it has per-app rules.
-- Center: event timeline. Blocks sized proportionally to duration (delay events show ms),
-  press/release pairs visually joined. Click selects an event (properties panel follows).
-  Selected delay shows an inline edit row with nudge buttons and a text field.
-- Right: properties panel for the selected macro: trigger binding (key name + direction),
-  playback type dropdown (client numbering labels), num_repeat / repeat_delay (enabled only
-  when the chosen playback type uses them, per `uses_num_repeat`/`uses_repeat_delay`),
-  direction toggle for playback, and the profile's per-app rules list (add/remove path).
+- Left rail, titled MACROS. Rows are a radio and the macro name, flattened across profile files and sorted by name. The selected row is orange with a filled dot. Selecting a row sets `open_profile` and `selected_macro`.
+- Center. The macro name, then one horizontal chip strip: key down, delay (`N ms`), key up. The rest of the canvas is empty.
+- Bottom bar. Gear prints the profiles directory. CLEAR empties the selected macro's events. START plays that macro through `MockInjector` and reports injected count and planned milliseconds. Record does not write events. REVERT reloads the directory when the workspace is dirty. SAVE writes the open profile after `ProfileFile::validate`.
 
 ## Round-trip discipline
 
@@ -76,15 +57,9 @@ Every save: `ProfileFile` → JSON text → write file. Then the test-suite equi
 daemon's own loader proves semantic equality: the shipped `--validate` path (`ProfileFile::validate`)
 runs over every profile we write, and a round-trip test loads, saves, reloads, and compares.
 
-## Motion (per animate skill)
+## Motion
 
-- Hover/selection in sidebar and timeline: background/underline change, 100–150ms,
-  strong ease-out. Purpose: feedback. Nothing that moves layout.
-- Save success: status text appears with a short opacity transition, 150ms.
-- Panel transitions: none. This is a pro tool used hundreds of times a day; per the
-  animate skill's frequency gate, keyboard-frequency actions get no animation, and list
-  re-selections stay instant. Only color/opacity transitions ship.
-- Reduced motion: color-only transitions are already the gentlest tier; nothing moves.
+Selection fill uses Rune's `motion::SNAPPY`. Purpose is state indication on a control used tens of times a day, so the motion is the token spring and nothing else. Chips, buttons, and playback do not animate. Rune snaps spatial travel under reduced motion. The first frame does not animate.
 
 ## CLI
 
@@ -95,6 +70,4 @@ runs over every profile we write, and a round-trip test loads, saves, reloads, a
 
 ## Refresh semantics
 
-The daemon reloads profiles in-process on SIGHUP. The app's Reload button re-reads the
-directory from disk (`Workspace::load_dir`), discarding in-memory edits, and labels itself
-"Reload (discards unsaved edits)" in a tooltip. There is no IPC to the daemon in scope.
+The daemon reloads profiles in-process on SIGHUP. REVERT calls `Workspace::reload`, which re-reads the directory and drops unsaved edits. There is no IPC to the daemon.
