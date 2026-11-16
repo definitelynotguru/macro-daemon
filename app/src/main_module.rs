@@ -34,6 +34,7 @@ fn profiles_dir() -> PathBuf {
 
 fn profile_dir_from(args: &[String]) -> PathBuf {
     args.iter()
+        .rev()
         .find(|arg| !arg.starts_with('-'))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("profiles"))
@@ -81,4 +82,23 @@ pub fn validate_one(path: &PathBuf) -> anyhow::Result<()> {
     let round2 = serde_json::to_string(&reparsed)?;
     anyhow::ensure!(round1 == round2, "round-trip mismatch after re-serialize");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::profile_dir_from;
+    use std::path::PathBuf;
+
+    #[test]
+    fn last_positional_arg_is_the_profiles_dir() {
+        assert_eq!(profile_dir_from(&[]), PathBuf::from("profiles"));
+        assert_eq!(
+            profile_dir_from(&["--validate".into(), "mine".into()]),
+            PathBuf::from("mine")
+        );
+        assert_eq!(
+            profile_dir_from(&["--snap".into(), "out.png".into(), "mine".into()]),
+            PathBuf::from("mine")
+        );
+    }
 }

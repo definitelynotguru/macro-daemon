@@ -191,12 +191,12 @@ impl Workspace {
         self.selected_event = None;
     }
 
-    pub fn new_macro(&mut self, id: String, binding: macro_daemon::config::Binding) {
+    pub fn new_macro(&mut self, id: String, binding: macro_daemon::config::Binding) -> bool {
         let Some(doc) = self.open_mut() else {
-            return;
+            return false;
         };
         if doc.file.macros.iter().any(|m| m.id == id) {
-            return;
+            return false;
         }
         doc.dirty = true;
         doc.file.macros.push(macro_daemon::config::Macro {
@@ -212,6 +212,7 @@ impl Workspace {
         self.selected_macro = Some(id);
         self.selected_event = None;
         self.status = Status::Idle;
+        true
     }
 
     pub fn duplicate_macro(&mut self, id: &str, new_id: String) {

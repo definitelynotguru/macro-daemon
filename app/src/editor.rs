@@ -2,7 +2,7 @@ use macro_daemon::config::{EventType, MacroEvent};
 use rune::tok::{motion, TextStyle};
 use rune::{color, Color, Cx, El, ScrollSpec, Shape, col, el, row, text};
 
-use crate::schema::{default_binding, key_name, new_macro_id};
+use crate::schema::{default_binding, event_label, key_name, new_macro_id};
 use crate::workspace::{MacroEntry, Status, Workspace};
 
 fn srgb(r: u8, g: u8, b: u8) -> Color {
@@ -217,14 +217,8 @@ fn chip(ws: &Workspace, index: usize, event: &MacroEvent) -> El {
             let label = key_name(event.page, event.code, &ws.keymap);
             key_chip(index, &label, event.extra_data != 0)
         }
-        other => {
-            let label = match other {
-                EventType::MouseButton | EventType::MouseExtraButton => format!("Btn {}", event.code),
-                EventType::MouseWheel => "Wheel".to_string(),
-                EventType::MouseTilt => "Tilt".to_string(),
-                EventType::RepeatMarker => "Repeat".to_string(),
-                EventType::Delay | EventType::KeyboardKey => String::new(),
-            };
+        _ => {
+            let label = event_label(event, &ws.keymap);
             row()
                 .key(format!("event-{index}"))
                 .h(28.0)
@@ -380,8 +374,11 @@ fn new_macro(ws: &mut Workspace) {
     }
     let id = new_macro_id();
     let binding = default_binding(&id);
-    ws.new_macro(id, binding);
-    ws.status = Status::Info("new macro".to_string());
+    if ws.new_macro(id, binding) {
+        ws.status = Status::Info("new macro".to_string());
+    } else {
+        ws.status = Status::Error("could not add macro".to_string());
+    }
 }
 
 fn save_profile(ws: &mut Workspace) {
