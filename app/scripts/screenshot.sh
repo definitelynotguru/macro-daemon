@@ -1,58 +1,21 @@
 #!/usr/bin/env bash
-# Boots macro-studio under an Xvfb display and captures the main window into
-# app/screenshots/. On this image the desktop environment already runs on
-# display :9 (Xvfb + xfwm4), so the script reuses it when present and boots
-# its own otherwise.
+# Headless PNG of the Macro Editor. No display and no Xvfb: Rune --snap renders
+# offscreen. A blank file is a failed run.
 set -euo pipefail
 SCRIPT="$(realpath "$0")"
 APPDIR="$(dirname "$(dirname "$SCRIPT")")"
 REPO="$(dirname "$APPDIR")"
-OUT="$APPDIR/screenshots"
-mkdir -p "$OUT"
-LOG="$OUT/boot.log"
-: > "$LOG"
-
-if xdpyinfo -display :9 >/dev/null 2>&1; then
-  export DISPLAY=:9
-  OWN_XVFB=""
-else
-  Xvfb :99 -screen 0 1600x1000x24 >/dev/null 2>&1 &
-  XVFB_PID=$!
-  export DISPLAY=:99
-  OWN_XVFB="$XVFB_PID"
-fi
-trap '[ -n "$OWN_XVFB" ] && kill "$OWN_XVFB" 2>/dev/null || true' EXIT
-
-"$REPO/target/debug/macro-studio" "$REPO/profiles" >"$LOG" 2>&1 &
-APP_PID=$!
-sleep 6
-
-WID="$(xdotool search --name "macro-studio" | head -1 || true)"
-if [ -n "$WID" ]; then
-  wmctrl -i -r "$WID" -e 0,10,58,1440,900 2>>"$LOG" || true
-  sleep 1
-  import -window "$WID" "$OUT/main-window.png"
-fi
-
-kill "$APP_PID" 2>/dev/null || true
-wait "$APP_PID" 2>/dev/null || true
-
-if [ -s "$LOG" ]; then
-  echo "APP WROTE OUTPUT (potential panic):"
-  cat "$LOG"
-  exit 1
-fi
-if [ ! -f "$OUT/main-window.png" ]; then
-  echo "no window captured"
-  exit 1
-fi
-python3 - "$OUT/main-window.png" <<'EOF'
+OUT="${1:-$APPDIR/screenshots/main-window.png}"
+BIN="${MACRO_STUDIO:-$REPO/target/release/macro-studio}"
+mkdir -p "$(dirname "$OUT")"
+export VK_ICD_FILENAMES="${VK_ICD_FILENAMES:-/usr/share/vulkan/icd.d/lvp_icd.json}"
+"$BIN" --snap "$OUT" --scene delay --size 1080x640 --scale 2 "$REPO/profiles"
+python3 - "$OUT" << 'PY'
 import sys
-from PIL import Image
-im = Image.open(sys.argv[1]).convert("RGB")
-colors = im.getcolors(maxcolors=10_000_000)
-non_bg = sum(c for c, col in colors if col != (20, 22, 26))
-print(f"{sys.argv[1]}: {im.size}, non-BG px = {non_bg}")
-assert non_bg > 100_000, f"{sys.argv[1]} looks blank"
-EOF
-echo "screenshot OK"
+from pathlib import Path
+path = Path(sys.argv[1])
+data = path.read_bytes()
+if len(data) < 8_000 or not data.startswith(b"\x89PNG"):
+    raise SystemExit(f"refusing a blank or tiny PNG: {path} {len(data)} bytes")
+print(f"wrote {path} ({len(data)} bytes)")
+PY

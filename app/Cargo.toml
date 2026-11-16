@@ -2,7 +2,7 @@
 name = "macro-studio"
 version = "0.1.0"
 edition = "2021"
-description = "Desktop macro editor for macro-daemon profiles, built with GPUI"
+description = "SteelSeries-style macro editor for macro-daemon profiles, built with Rune"
 license = "MIT"
 
 [[bin]]
@@ -13,7 +13,7 @@ path = "src/main.rs"
 macro_daemon = { path = ".." }
 anyhow = "1"
 serde_json = "1"
-gpui = { version = "0.2.2", features = ["runtime_shaders"] }
+rune = { git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190", features = ["tooling"] }
 
 [dev-dependencies]
 tempfile = "3"

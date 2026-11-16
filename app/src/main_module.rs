@@ -1,46 +1,57 @@
 use std::path::PathBuf;
 
-use gpui::prelude::*;
-use gpui::{px, size, App, Bounds, Context, WindowBounds, WindowOptions};
+use rune::AppSpec;
 
-use crate::studio::StudioView;
-use crate::workspace::{Status, Workspace};
-
-const WIN_W: f32 = 1280.0;
-const WIN_H: f32 = 800.0;
+use crate::editor::{select_opening, view};
+use crate::workspace::Workspace;
 
 pub fn main() {
-    let mut dir = PathBuf::from("profiles");
-    let mut validate = false;
-    for arg in std::env::args().skip(1) {
-        if arg == "--validate" {
-            validate = true;
-        } else {
-            dir = PathBuf::from(arg);
-        }
-    }
-    if validate {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--validate") {
+        let dir = profile_dir_from(&args);
         std::process::exit(run_validate(&dir));
     }
-    run_gui(dir);
+    rune::set_app_id("macro-studio");
+    rune::run(AppSpec {
+        scenes: &[("delay", select_opening)],
+        ..AppSpec::new("Macro Editor", (1080.0, 640.0), init_state, view)
+    });
+}
+
+fn init_state() -> Workspace {
+    let mut workspace = Workspace::new();
+    workspace.load_dir(&profiles_dir());
+    select_opening(&mut workspace);
+    workspace
+}
+
+fn profiles_dir() -> PathBuf {
+    profile_dir_from(rune::extra_args())
+}
+
+fn profile_dir_from(args: &[String]) -> PathBuf {
+    args.iter()
+        .find(|arg| !arg.starts_with('-'))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("profiles"))
 }
 
 pub fn run_validate(dir: &PathBuf) -> i32 {
-    let mut failures = 0;
     let Ok(entries) = std::fs::read_dir(dir) else {
         eprintln!("FAIL: cannot read dir {}", dir.display());
         return 1;
     };
     let mut paths: Vec<PathBuf> = entries
         .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("json"))
         .collect();
     paths.sort();
     if paths.is_empty() {
         eprintln!("FAIL: no profiles in {}", dir.display());
         return 1;
     }
+    let mut failures = 0;
     for path in paths {
         let name = path
             .file_name()
@@ -55,11 +66,7 @@ pub fn run_validate(dir: &PathBuf) -> i32 {
             }
         }
     }
-    if failures == 0 {
-        0
-    } else {
-        1
-    }
+    if failures == 0 { 0 } else { 1 }
 }
 
 pub fn validate_one(path: &PathBuf) -> anyhow::Result<()> {
@@ -71,40 +78,4 @@ pub fn validate_one(path: &PathBuf) -> anyhow::Result<()> {
     let round2 = serde_json::to_string(&reparsed)?;
     anyhow::ensure!(round1 == round2, "round-trip mismatch after re-serialize");
     Ok(())
-}
-
-pub fn run_gui(dir: PathBuf) {
-    gpui::Application::new().run(move |cx: &mut App| {
-        let mut ws = Workspace::new();
-        ws.load_dir(&dir);
-        let err = match &ws.status {
-            Status::Error(text) => Some(text.clone()),
-            _ => None,
-        };
-        if let Some(err) = err {
-            eprintln!("macro-studio: {err}");
-        }
-        let workspace: gpui::Entity<Workspace> = cx.new(|_| ws);
-        let bounds = Bounds::centered(None, size(px(WIN_W), px(WIN_H)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some("macro-studio".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-            |_, cx| {
-                let workspace_entity = workspace.clone();
-
-                cx.new(move |cx: &mut Context<StudioView>| {
-                    let ws_entity = workspace_entity.clone();
-                    StudioView::new(ws_entity, cx)
-                })
-            },
-        )
-        .unwrap();
-        cx.activate(true);
-    });
 }

@@ -428,3 +428,21 @@ fn headless_validate_accepts_good_and_rejects_corrupt_profiles() {
     std::fs::remove_file(dir.join("corrupt.json")).unwrap();
     assert_eq!(macro_studio::main_module::run_validate(&dir), 0);
 }
+
+#[test]
+fn start_plays_the_selected_macro_through_mock_injector() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("profiles");
+    write_profile(&dir, "sample.json", &sample_file());
+    let mut ws = Workspace::new();
+    ws.load_dir(&dir);
+    ws.select_profile("sample.json");
+    ws.select_macro("m-1");
+    ws.play_selected();
+    let Status::Info(text) = &ws.status else {
+        panic!("expected an engine-level play report, got {:?}", ws.status);
+    };
+    assert!(text.contains("MockInjector"), "{text}");
+    assert!(text.contains("injected"), "{text}");
+    assert!(!text.contains("/dev/uinput"), "{text}");
+}
